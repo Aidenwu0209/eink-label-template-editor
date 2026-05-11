@@ -17,6 +17,51 @@ const emit = defineEmits<{
   'update-prop': [key: string, value: unknown];
 }>();
 
+const OBJECT_TYPE_LABELS = {
+  RECT: '矩形框',
+  LINE: '直线',
+  TEXT: '文本',
+  PRICE: '价格',
+  DISCOUNT: '折扣',
+  IMAGE: '图片',
+  QRCODE: '二维码',
+  BARCODE: '条形码',
+} as const;
+
+const FIELD_LABELS: Record<string, string> = {
+  productName: '商品名称',
+  description: '商品描述',
+  price: '价格',
+  discount: '折扣',
+  imageUrl: '图片地址',
+  qrContent: '二维码内容',
+  barcodeContent: '条形码内容',
+};
+
+const OVERFLOW_MODE_LABELS: Record<TextOverflowMode, string> = {
+  clip: '裁切超出内容',
+  ellipsis: '超出显示省略号',
+  wrap: '自动换行',
+};
+
+const IMAGE_FIT_MODE_LABELS: Record<ImageFitMode, string> = {
+  contain: '完整显示（等比缩放）',
+  cover: '填满区域（可能裁切）',
+  fill: '拉伸填满',
+};
+
+const QRCODE_ERROR_CORRECTION_LABELS: Record<QrcodeErrorCorrection, string> = {
+  L: 'L - 容错低，内容容量最大',
+  M: 'M - 默认',
+  Q: 'Q - 容错较高',
+  H: 'H - 容错最高，内容容量最小',
+};
+
+function fieldOptionLabel(field: string): string {
+  const label = FIELD_LABELS[field];
+  return label ? `${label}（${field}）` : field;
+}
+
 const objectType = computed(() => {
   if (!props.selectedObject) return null;
   const ext = (props.selectedObject as any).extensionType;
@@ -45,7 +90,11 @@ const hasSupportedSelection = computed(() => {
     && (isRect.value || isLine.value || isText.value || isPrice.value || isDiscount.value || isImage.value || isQrcode.value || isBarcode.value)
   );
 });
-const panelTitle = computed(() => hasSupportedSelection.value ? `${objectType.value} 属性` : '属性');
+const objectTypeLabel = computed(() => {
+  if (!objectType.value) return '';
+  return OBJECT_TYPE_LABELS[objectType.value as keyof typeof OBJECT_TYPE_LABELS] ?? objectType.value;
+});
+const panelTitle = computed(() => hasSupportedSelection.value ? `${objectTypeLabel.value}属性` : '属性面板');
 
 // RECT properties
 const rectX = computed(() => props.selectedObject?.left ?? 0);
@@ -335,15 +384,16 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">字段绑定</label>
+        <label class="prop-label">数据字段</label>
         <select
           class="prop-input"
           :value="textFieldBinding"
           @change="updateProp('ext.fieldBinding', ($event.target as HTMLSelectElement).value || null)"
         >
           <option value="">无（固定文本）</option>
-          <option v-for="f in bindableFields" :key="f" :value="f">{{ f }}</option>
+          <option v-for="f in bindableFields" :key="f" :value="f">{{ fieldOptionLabel(f) }}</option>
         </select>
+        <div class="prop-hint">选择字段后，文本会使用预览数据中的对应值。</div>
       </div>
 
       <div class="prop-group">
@@ -404,18 +454,18 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">超长模式</label>
+        <label class="prop-label">超长内容处理</label>
         <select
           class="prop-input"
           :value="textOverflow"
           @change="updateProp('ext.overflow', ($event.target as HTMLSelectElement).value)"
         >
-          <option v-for="m in TEXT_OVERFLOW_MODES" :key="m" :value="m">{{ m }}</option>
+          <option v-for="m in TEXT_OVERFLOW_MODES" :key="m" :value="m">{{ OVERFLOW_MODE_LABELS[m] }}</option>
         </select>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">行数限制 (0=不限)</label>
+        <label class="prop-label">最多显示行数</label>
         <input
           type="number"
           class="prop-input"
@@ -423,6 +473,7 @@ function handleStaticImageFileChange(event: Event) {
           :value="textLineClamp"
           @change="updateProp('ext.lineClamp', +($event.target as HTMLInputElement).value)"
         />
+        <div class="prop-hint">填 0 表示不限制行数。</div>
       </div>
 
       <div class="prop-group">
@@ -439,8 +490,8 @@ function handleStaticImageFileChange(event: Event) {
     <!-- PRICE properties -->
     <template v-if="isPrice">
       <div class="prop-group">
-        <label class="prop-label">绑定字段</label>
-        <input type="text" class="prop-input" value="price" disabled />
+        <label class="prop-label">数据字段</label>
+        <input type="text" class="prop-input" :value="fieldOptionLabel('price')" disabled />
       </div>
 
       <div class="prop-group">
@@ -607,31 +658,33 @@ function handleStaticImageFileChange(event: Event) {
         @update:model-value="updateProp('ext.decimalStyle', { ...priceExt?.decimalStyle, color: $event })"
       />
       <div class="prop-group">
-        <label class="prop-label">上浮偏移 (offsetY)</label>
+        <label class="prop-label">小数字符上移</label>
         <input
           type="number"
           class="prop-input"
           :value="priceExt?.decimalStyle?.offsetY ?? -12"
           @change="updateProp('ext.decimalStyle', { ...priceExt?.decimalStyle, offsetY: +($event.target as HTMLInputElement).value })"
         />
+        <div class="prop-hint">负数表示向上移动，例如 -12。</div>
       </div>
     </template>
 
     <!-- DISCOUNT properties -->
     <template v-if="isDiscount">
       <div class="prop-group">
-        <label class="prop-label">绑定字段</label>
-        <input type="text" class="prop-input" value="discount" disabled />
+        <label class="prop-label">数据字段</label>
+        <input type="text" class="prop-input" :value="fieldOptionLabel('discount')" disabled />
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">格式模板</label>
+        <label class="prop-label">显示格式</label>
         <input
           type="text"
           class="prop-input"
           :value="discountFormatTemplate"
           @change="updateProp('ext.formatTemplate', ($event.target as HTMLInputElement).value)"
         />
+        <div class="prop-hint">用 {value} 表示折扣值，例如 {value}折。</div>
       </div>
 
       <div class="prop-group">
@@ -722,17 +775,17 @@ function handleStaticImageFileChange(event: Event) {
     <!-- IMAGE properties -->
     <template v-if="isImage">
       <div class="prop-group">
-        <label class="prop-label">图片类型</label>
+        <label class="prop-label">图片来源</label>
         <input
           type="text"
           class="prop-input"
-          :value="imageSource === 'dynamic' ? '动态（imageUrl）' : '静态'"
+          :value="imageSource === 'dynamic' ? '数据字段：图片地址（imageUrl）' : '手动上传 / 图片 URL'"
           disabled
         />
       </div>
 
       <div class="prop-group" v-if="imageSource === 'static'">
-        <label class="prop-label">图片地址</label>
+        <label class="prop-label">图片 URL / Base64</label>
         <input
           type="text"
           class="prop-input"
@@ -757,11 +810,11 @@ function handleStaticImageFileChange(event: Event) {
       <div v-if="imageLoadError" class="prop-error">{{ imageLoadError }}</div>
 
       <div class="prop-group" v-if="imageSource === 'dynamic'">
-        <label class="prop-label">绑定字段</label>
+        <label class="prop-label">数据字段</label>
         <input
           type="text"
           class="prop-input"
-          value="imageUrl"
+          :value="fieldOptionLabel('imageUrl')"
           disabled
         />
       </div>
@@ -787,13 +840,13 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">适配模式</label>
+        <label class="prop-label">图片填充方式</label>
         <select
           class="prop-input"
           :value="imageFitMode"
           @change="updateProp('ext.fitMode', ($event.target as HTMLSelectElement).value)"
         >
-          <option v-for="m in IMAGE_FIT_MODES" :key="m" :value="m">{{ m }}</option>
+          <option v-for="m in IMAGE_FIT_MODES" :key="m" :value="m">{{ IMAGE_FIT_MODE_LABELS[m] }}</option>
         </select>
       </div>
 
@@ -808,8 +861,8 @@ function handleStaticImageFileChange(event: Event) {
     <!-- QRCODE properties -->
     <template v-if="isQrcode">
       <div class="prop-group">
-        <label class="prop-label">绑定字段</label>
-        <input type="text" class="prop-input" value="qrContent" disabled />
+        <label class="prop-label">数据字段</label>
+        <input type="text" class="prop-input" :value="fieldOptionLabel('qrContent')" disabled />
       </div>
 
       <div class="prop-group">
@@ -833,18 +886,18 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">纠错等级</label>
+        <label class="prop-label">容错等级</label>
         <select
           class="prop-input"
           :value="qrcodeErrorCorrection"
           @change="updateProp('ext.errorCorrection', ($event.target as HTMLSelectElement).value)"
         >
-          <option v-for="e in QRCODE_ERROR_CORRECTIONS" :key="e" :value="e">{{ e }}</option>
+          <option v-for="e in QRCODE_ERROR_CORRECTIONS" :key="e" :value="e">{{ QRCODE_ERROR_CORRECTION_LABELS[e] }}</option>
         </select>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">边距</label>
+        <label class="prop-label">二维码留白</label>
         <input
           type="number"
           class="prop-input"
@@ -876,8 +929,8 @@ function handleStaticImageFileChange(event: Event) {
     <!-- BARCODE properties -->
     <template v-if="isBarcode">
       <div class="prop-group">
-        <label class="prop-label">绑定字段</label>
-        <input type="text" class="prop-input" value="barcodeContent" disabled />
+        <label class="prop-label">数据字段</label>
+        <input type="text" class="prop-input" :value="fieldOptionLabel('barcodeContent')" disabled />
       </div>
 
       <div class="prop-group">

@@ -46,46 +46,46 @@ const emit = defineEmits<{
 <template>
   <div class="toolbar-actions">
     <div class="toolbar-group">
-      <span class="toolbar-group-label">创建</span>
-      <button class="tool-btn" title="矩形" @click="emit('add-rect')">
+      <span class="toolbar-group-label">添加元素</span>
+      <button class="tool-btn" title="添加矩形框" aria-label="添加矩形框" @click="emit('add-rect')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="2" y="3" width="12" height="10" stroke="currentColor" stroke-width="1.5" fill="none" />
         </svg>
-        <span>矩形</span>
+        <span>矩形框</span>
       </button>
-      <button class="tool-btn" title="直线" @click="emit('add-line')">
+      <button class="tool-btn" title="添加直线" aria-label="添加直线" @click="emit('add-line')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <line x1="2" y1="14" x2="14" y2="2" stroke="currentColor" stroke-width="1.5" />
         </svg>
         <span>直线</span>
       </button>
-      <button class="tool-btn" title="文本" @click="emit('add-text')">
+      <button class="tool-btn" title="添加固定文本或绑定文本字段" aria-label="添加文本" @click="emit('add-text')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <text x="3" y="13" font-size="13" font-weight="bold" fill="currentColor" font-family="sans-serif">T</text>
         </svg>
         <span>文本</span>
       </button>
-      <button class="tool-btn" title="价格" @click="emit('add-price')">
+      <button class="tool-btn" title="添加价格组件，绑定 price 字段" aria-label="添加价格组件" @click="emit('add-price')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <text x="1" y="13" font-size="13" font-weight="bold" fill="currentColor" font-family="sans-serif">¥</text>
         </svg>
         <span>价格</span>
       </button>
-      <button class="tool-btn" title="折扣" @click="emit('add-discount')">
+      <button class="tool-btn" title="添加折扣组件，绑定 discount 字段" aria-label="添加折扣组件" @click="emit('add-discount')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <text x="1" y="13" font-size="11" font-weight="bold" fill="currentColor" font-family="sans-serif">%</text>
         </svg>
         <span>折扣</span>
       </button>
-      <button class="tool-btn" title="静态图片" @click="emit('add-static-image')">
+      <button class="tool-btn" title="添加图片框，可在右侧上传图片或输入 URL" aria-label="添加上传图片框" @click="emit('add-static-image')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="2" y="3" width="12" height="10" stroke="currentColor" stroke-width="1.5" fill="none" />
           <circle cx="5.5" cy="6.5" r="1.5" fill="currentColor" />
           <path d="M2 11 L6 7 L9 10 L11 8 L14 11 L14 13 L2 13 Z" fill="currentColor" opacity="0.4" />
         </svg>
-        <span>静态图</span>
+        <span>上传图片</span>
       </button>
-      <button class="tool-btn" title="动态图片" @click="emit('add-dynamic-image')">
+      <button class="tool-btn" title="添加动态图片，绑定 imageUrl 字段" aria-label="添加动态图片字段" @click="emit('add-dynamic-image')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="2" y="3" width="12" height="10" stroke="currentColor" stroke-width="1.5" fill="none" />
           <circle cx="5.5" cy="6.5" r="1.5" fill="currentColor" />
@@ -93,9 +93,9 @@ const emit = defineEmits<{
           <circle cx="12.5" cy="3.5" r="2.5" fill="#4fc3f7" />
           <text x="11" y="4.8" font-size="4" fill="white" font-family="sans-serif">D</text>
         </svg>
-        <span>动态图</span>
+        <span>图片字段</span>
       </button>
-      <button class="tool-btn" title="二维码" @click="emit('add-qrcode')">
+      <button class="tool-btn" title="添加二维码，绑定 qrContent 字段" aria-label="添加二维码" @click="emit('add-qrcode')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="1" y="1" width="5" height="5" stroke="currentColor" stroke-width="1.2" fill="none" />
           <rect x="2.5" y="2.5" width="2" height="2" fill="currentColor" />
@@ -108,7 +108,7 @@ const emit = defineEmits<{
         </svg>
         <span>二维码</span>
       </button>
-      <button class="tool-btn" title="条形码" @click="emit('add-barcode')">
+      <button class="tool-btn" title="添加条形码，绑定 barcodeContent 字段" aria-label="添加条形码" @click="emit('add-barcode')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="1" y="2" width="1.5" height="12" fill="currentColor" />
           <rect x="3.5" y="2" width="0.8" height="12" fill="currentColor" />
@@ -123,13 +123,13 @@ const emit = defineEmits<{
     </div>
 
     <div class="toolbar-group">
-      <span class="toolbar-group-label">编辑</span>
-      <button class="tool-btn compact" title="撤销 (Cmd/Ctrl+Z)" :disabled="!props.canUndo" @click="emit('undo')">撤</button>
-      <button class="tool-btn compact" title="重做 (Shift+Cmd/Ctrl+Z 或 Cmd/Ctrl+Y)" :disabled="!props.canRedo" @click="emit('redo')">重</button>
-      <button class="tool-btn compact" title="删除 (Delete/Backspace)" :disabled="!props.hasSelection" @click="emit('delete')">删</button>
-      <button class="tool-btn compact" title="复制 (Cmd/Ctrl+C)" :disabled="!props.hasSelection" @click="emit('copy')">复制</button>
-      <button class="tool-btn compact" title="粘贴 (Cmd/Ctrl+V)" :disabled="!props.hasClipboard" @click="emit('paste')">粘贴</button>
-      <button class="tool-btn compact" title="复制一份 (Cmd/Ctrl+D)" :disabled="!props.hasSelection" @click="emit('duplicate')">副本</button>
+      <span class="toolbar-group-label">编辑操作</span>
+      <button class="tool-btn compact" title="撤销上一步操作 (Cmd/Ctrl+Z)" :disabled="!props.canUndo" @click="emit('undo')">撤销</button>
+      <button class="tool-btn compact" title="重做刚撤销的操作 (Shift+Cmd/Ctrl+Z 或 Cmd/Ctrl+Y)" :disabled="!props.canRedo" @click="emit('redo')">重做</button>
+      <button class="tool-btn compact" title="删除选中的元素 (Delete/Backspace)" :disabled="!props.hasSelection" @click="emit('delete')">删除</button>
+      <button class="tool-btn compact" title="复制选中的元素 (Cmd/Ctrl+C)" :disabled="!props.hasSelection" @click="emit('copy')">复制</button>
+      <button class="tool-btn compact" title="粘贴已复制的元素 (Cmd/Ctrl+V)" :disabled="!props.hasClipboard" @click="emit('paste')">粘贴</button>
+      <button class="tool-btn compact" title="立即复制一份选中元素 (Cmd/Ctrl+D)" :disabled="!props.hasSelection" @click="emit('duplicate')">复制一份</button>
       <button
         :class="['tool-btn', 'compact', { active: props.isSelectionLocked }]"
         :title="props.isSelectionLocked ? '解锁选中对象' : '锁定选中对象'"
@@ -141,21 +141,21 @@ const emit = defineEmits<{
     </div>
 
     <div class="toolbar-group">
-      <span class="toolbar-group-label">图层</span>
-      <button class="tool-btn compact" title="上移一层" :disabled="!props.hasSelection" @click="emit('bring-forward')">上移</button>
-      <button class="tool-btn compact" title="下移一层" :disabled="!props.hasSelection" @click="emit('send-backward')">下移</button>
-      <button class="tool-btn compact" title="置顶" :disabled="!props.hasSelection" @click="emit('bring-front')">置顶</button>
-      <button class="tool-btn compact" title="置底" :disabled="!props.hasSelection" @click="emit('send-back')">置底</button>
+      <span class="toolbar-group-label">层级顺序</span>
+      <button class="tool-btn compact" title="让选中元素向前移动一层" :disabled="!props.hasSelection" @click="emit('bring-forward')">前移一层</button>
+      <button class="tool-btn compact" title="让选中元素向后移动一层" :disabled="!props.hasSelection" @click="emit('send-backward')">后移一层</button>
+      <button class="tool-btn compact" title="让选中元素显示在最上层" :disabled="!props.hasSelection" @click="emit('bring-front')">置于顶层</button>
+      <button class="tool-btn compact" title="让选中元素显示在最底层，仍保留在画布背景上方" :disabled="!props.hasSelection" @click="emit('send-back')">置于底层</button>
     </div>
 
     <div class="toolbar-group">
-      <span class="toolbar-group-label">对齐</span>
-      <button class="tool-btn compact" title="左对齐" :disabled="!props.hasSelection" @click="emit('align-left')">左</button>
-      <button class="tool-btn compact" title="水平居中对齐" :disabled="!props.hasSelection" @click="emit('align-center')">水平中</button>
-      <button class="tool-btn compact" title="右对齐" :disabled="!props.hasSelection" @click="emit('align-right')">右</button>
-      <button class="tool-btn compact" title="顶对齐" :disabled="!props.hasSelection" @click="emit('align-top')">顶</button>
-      <button class="tool-btn compact" title="垂直居中对齐" :disabled="!props.hasSelection" @click="emit('align-middle')">垂直中</button>
-      <button class="tool-btn compact" title="底对齐" :disabled="!props.hasSelection" @click="emit('align-bottom')">底</button>
+      <span class="toolbar-group-label">对齐位置</span>
+      <button class="tool-btn compact" title="单选时对齐到画布左侧，多选时对齐到选区左侧" :disabled="!props.hasSelection" @click="emit('align-left')">左对齐</button>
+      <button class="tool-btn compact" title="单选时水平居中到画布，多选时水平居中到选区" :disabled="!props.hasSelection" @click="emit('align-center')">水平居中</button>
+      <button class="tool-btn compact" title="单选时对齐到画布右侧，多选时对齐到选区右侧" :disabled="!props.hasSelection" @click="emit('align-right')">右对齐</button>
+      <button class="tool-btn compact" title="单选时对齐到画布顶部，多选时对齐到选区顶部" :disabled="!props.hasSelection" @click="emit('align-top')">顶部对齐</button>
+      <button class="tool-btn compact" title="单选时垂直居中到画布，多选时垂直居中到选区" :disabled="!props.hasSelection" @click="emit('align-middle')">垂直居中</button>
+      <button class="tool-btn compact" title="单选时对齐到画布底部，多选时对齐到选区底部" :disabled="!props.hasSelection" @click="emit('align-bottom')">底部对齐</button>
     </div>
   </div>
 </template>
@@ -205,13 +205,14 @@ const emit = defineEmits<{
   padding: 7px 5px;
   font-size: 11px;
   font-weight: 650;
+  line-height: 1.15;
   background: linear-gradient(180deg, rgba(65, 66, 66, 0.96), rgba(39, 40, 41, 0.96));
   color: #ddd5ca;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 10px;
   cursor: pointer;
   transition: transform 0.15s, border-color 0.15s, background 0.15s, color 0.15s;
-  white-space: nowrap;
+  white-space: normal;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
@@ -230,9 +231,9 @@ const emit = defineEmits<{
 .tool-btn.compact {
   justify-content: center;
   min-width: 0;
-  min-height: 34px;
+  min-height: 38px;
   padding: 6px 4px;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .tool-btn.active {

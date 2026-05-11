@@ -98,7 +98,7 @@ onUnmounted(() => {
 <template>
   <div class="preview-canvas-wrapper">
     <div class="preview-header">
-      <span class="preview-title">E-ink 预览</span>
+      <span class="preview-title">电子墨水预览</span>
       <span v-if="isRendering" class="preview-badge">渲染中...</span>
     </div>
     <canvas

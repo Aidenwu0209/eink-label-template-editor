@@ -20,7 +20,7 @@ const showGrid = ref(true);
 const screenInfo = computed(() => {
   const p = config.screen.profile;
   const modeLabel = config.mode === 'edit' ? '编辑' : '新建';
-  return `${modeLabel} | ${config.canvas.width}×${config.canvas.height} | ${p.palette.length} 色`;
+  return `${modeLabel} | ${config.canvas.width}×${config.canvas.height} | ${p.displayName}`;
 });
 
 const palette = computed(() => editorStore.getPalette());
@@ -184,8 +184,8 @@ onUnmounted(() => {
       <div class="toolbar-left">
         <span class="app-badge">ESL</span>
         <div>
-          <span class="toolbar-title">E-ink Template Editor</span>
-          <span class="toolbar-subtitle">电子价签模板工作台</span>
+          <span class="toolbar-title">电子墨水模板编辑器</span>
+          <span class="toolbar-subtitle">电子价签模板设计工作台</span>
         </div>
       </div>
       <div class="document-tabs">
@@ -194,17 +194,17 @@ onUnmounted(() => {
       </div>
       <div class="toolbar-right">
         <div class="zoom-controls" aria-label="画布缩放控制">
-          <button class="toolbar-btn compact" title="适配窗口" @click="fitZoom">适配</button>
+          <button class="toolbar-btn compact" title="将画布缩放到当前窗口可完整查看" @click="fitZoom">适应画布</button>
           <button class="toolbar-btn icon" title="缩小" @click="zoomOut">−</button>
           <span class="zoom-label">{{ zoomLabel }}</span>
           <button class="toolbar-btn icon" title="放大" @click="zoomIn">+</button>
           <button class="toolbar-btn compact" title="重置为 100%" @click="resetZoom">100%</button>
           <button
             :class="['toolbar-btn', 'compact', { active: showGrid }]"
-            title="显示或隐藏网格"
+            :title="showGrid ? '隐藏画布网格辅助线' : '显示画布网格辅助线'"
             @click="showGrid = !showGrid"
           >
-            网格
+            {{ showGrid ? '隐藏网格' : '显示网格' }}
           </button>
         </div>
         <button class="toolbar-btn primary" :disabled="editorStore.isSaving" @click="handleSave">
@@ -215,7 +215,7 @@ onUnmounted(() => {
 
     <main class="editor-shell">
       <aside class="toolbox-panel">
-        <div class="panel-caption">工具</div>
+        <div class="panel-caption">添加与编辑</div>
         <EditorToolbar
           :can-undo="editorStore.canUndo"
           :can-redo="editorStore.canRedo"
@@ -257,7 +257,7 @@ onUnmounted(() => {
             <span class="stage-title">编辑画布</span>
             <span class="stage-meta">{{ config.canvas.width }} × {{ config.canvas.height }} px</span>
           </div>
-          <span class="stage-hint">选择元素后在右侧调整属性，拖拽画布对象完成排版</span>
+          <span class="stage-hint">选中元素后在右侧调整属性；拖拽元素排版；预览会实时刷新</span>
         </div>
 
         <div ref="workspaceRef" class="stage-viewport">
@@ -279,7 +279,7 @@ onUnmounted(() => {
         <section class="dock-panel preview-dock">
           <div class="dock-title-row">
             <span>电子墨水屏预览</span>
-            <span class="dock-kicker">实时</span>
+            <span class="dock-kicker">实时预览</span>
           </div>
           <div class="preview-stage">
             <div class="preview-scaled" :style="previewContainerStyle">
@@ -302,7 +302,7 @@ onUnmounted(() => {
 
         <section class="dock-panel screen-dock">
           <div class="dock-title-row">
-            <span>屏幕色板</span>
+            <span>当前屏幕色板</span>
             <span class="dock-kicker">{{ palette.length }} 色</span>
           </div>
           <div class="palette-strip">
@@ -319,10 +319,10 @@ onUnmounted(() => {
     </main>
 
     <footer class="editor-statusbar">
-      <span>{{ config.screen.type.toUpperCase() }}</span>
+      <span>{{ config.screen.profile.displayName }}</span>
       <span>{{ config.canvas.width }} × {{ config.canvas.height }} px</span>
       <span>{{ config.screen.profile.dpi }} DPI</span>
-      <span>Delete 删除选中</span>
+      <span>Delete 删除选中元素</span>
       <span>Cmd/Ctrl + D 复制一份</span>
       <span v-if="saveMessage" :class="['save-message', saveMessage.type]">
         {{ saveMessage.text }}
