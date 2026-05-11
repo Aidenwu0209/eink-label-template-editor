@@ -118,7 +118,7 @@ export function createPriceVisual(
     }));
   }
 
-  return withExtension(new fabric.Group(parts, bounds), 'PRICE', ext);
+  return withExtension(createBoundedGroup(parts, bounds), 'PRICE', ext);
 }
 
 export function createDiscountVisual(bounds: VisualBounds, value: unknown, ext: DiscountExtension): fabric.Group {
@@ -136,7 +136,7 @@ export function createDiscountVisual(bounds: VisualBounds, value: unknown, ext: 
     evented: false,
   });
 
-  return withExtension(new fabric.Group([
+  return withExtension(createBoundedGroup([
     new fabric.Rect({
       left: 0,
       top: 0,
@@ -144,7 +144,9 @@ export function createDiscountVisual(bounds: VisualBounds, value: unknown, ext: 
       height: bounds.height,
       fill: ext.backgroundColor,
       stroke: ext.textColor,
-      strokeWidth: 1,
+      strokeWidth: ext.backgroundColor === ext.textColor ? 0 : 1,
+      rx: Math.min(4, Math.max(0, bounds.height / 5)),
+      ry: Math.min(4, Math.max(0, bounds.height / 5)),
       selectable: false,
       evented: false,
     }),
@@ -192,7 +194,7 @@ export async function createImageVisual(bounds: VisualBounds, ext: ImageExtensio
     );
   }
 
-  return withExtension(new fabric.Group(objects, bounds), 'IMAGE', {
+  return withExtension(createBoundedGroup(objects, bounds), 'IMAGE', {
     ...ext,
     loadStatus,
     loadError,
@@ -237,7 +239,7 @@ export function createQrcodeVisual(bounds: VisualBounds, content: unknown, ext: 
     }
   }
 
-  return withExtension(new fabric.Group(objects, bounds), 'QRCODE', {
+  return withExtension(createBoundedGroup(objects, bounds), 'QRCODE', {
     ...ext,
     readabilityWarnings: getQrcodeReadabilityWarnings(bounds, content, ext),
   });
@@ -278,7 +280,7 @@ export function createBarcodeVisual(bounds: VisualBounds, content: unknown, ext:
     }));
   }
 
-  return withExtension(new fabric.Group(objects, bounds), 'BARCODE', {
+  return withExtension(createBoundedGroup(objects, bounds), 'BARCODE', {
     ...ext,
     readabilityWarnings: getBarcodeReadabilityWarnings(bounds, rawValue),
   });
@@ -341,6 +343,24 @@ function withExtension<T extends fabric.Object>(obj: T, type: string, extension:
   (obj as any).extensionType = type;
   (obj as any).extension = structuredClone(extension);
   return obj;
+}
+
+function groupBounds(bounds: VisualBounds): Partial<fabric.GroupProps> {
+  return {
+    ...bounds,
+    originX: 'left',
+    originY: 'top',
+  };
+}
+
+function createBoundedGroup(objects: fabric.Object[], bounds: VisualBounds): fabric.Group {
+  const group = new fabric.Group(objects, groupBounds(bounds));
+  group.set({
+    ...groupBounds(bounds),
+    width: bounds.width,
+    height: bounds.height,
+  } as any);
+  return group;
 }
 
 function verticalTextTop(height: number, fontSize: number, align: DiscountExtension['verticalAlign']): number {

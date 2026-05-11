@@ -45,7 +45,7 @@ const emit = defineEmits<{
 
 <template>
   <div class="toolbar-actions">
-    <div class="toolbar-group">
+    <div class="toolbar-group create-group">
       <span class="toolbar-group-label">添加元素</span>
       <button class="tool-btn" title="添加矩形框" aria-label="添加矩形框" @click="emit('add-rect')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -122,7 +122,7 @@ const emit = defineEmits<{
       </button>
     </div>
 
-    <div class="toolbar-group">
+    <div class="toolbar-group utility-group">
       <span class="toolbar-group-label">编辑操作</span>
       <button class="tool-btn compact" title="撤销上一步操作 (Cmd/Ctrl+Z)" :disabled="!props.canUndo" @click="emit('undo')">撤销</button>
       <button class="tool-btn compact" title="重做刚撤销的操作 (Shift+Cmd/Ctrl+Z 或 Cmd/Ctrl+Y)" :disabled="!props.canRedo" @click="emit('redo')">重做</button>
@@ -140,7 +140,7 @@ const emit = defineEmits<{
       </button>
     </div>
 
-    <div class="toolbar-group">
+    <div class="toolbar-group utility-group">
       <span class="toolbar-group-label">层级顺序</span>
       <button class="tool-btn compact" title="让选中元素向前移动一层" :disabled="!props.hasSelection" @click="emit('bring-forward')">前移一层</button>
       <button class="tool-btn compact" title="让选中元素向后移动一层" :disabled="!props.hasSelection" @click="emit('send-backward')">后移一层</button>
@@ -148,7 +148,7 @@ const emit = defineEmits<{
       <button class="tool-btn compact" title="让选中元素显示在最底层，仍保留在画布背景上方" :disabled="!props.hasSelection" @click="emit('send-back')">置于底层</button>
     </div>
 
-    <div class="toolbar-group">
+    <div class="toolbar-group utility-group">
       <span class="toolbar-group-label">对齐位置</span>
       <button class="tool-btn compact" title="单选时对齐到画布左侧，多选时对齐到选区左侧" :disabled="!props.hasSelection" @click="emit('align-left')">左对齐</button>
       <button class="tool-btn compact" title="单选时水平居中到画布，多选时水平居中到选区" :disabled="!props.hasSelection" @click="emit('align-center')">水平居中</button>
@@ -165,10 +165,10 @@ const emit = defineEmits<{
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
   height: 100%;
   overflow-y: auto;
-  padding: 0 8px 12px;
+  padding: 0 7px 12px;
 }
 
 .toolbar-group {
@@ -179,6 +179,14 @@ const emit = defineEmits<{
   border-right: none;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
+}
+
+.create-group {
+  grid-template-columns: 1fr;
+}
+
+.utility-group {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .toolbar-group:last-child {
@@ -197,12 +205,12 @@ const emit = defineEmits<{
 
 .tool-btn {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 50px;
-  padding: 7px 5px;
+  justify-content: flex-start;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 8px;
   font-size: 11px;
   font-weight: 650;
   line-height: 1.15;
@@ -212,7 +220,7 @@ const emit = defineEmits<{
   border-radius: 10px;
   cursor: pointer;
   transition: transform 0.15s, border-color 0.15s, background 0.15s, color 0.15s;
-  white-space: normal;
+  white-space: nowrap;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
@@ -231,9 +239,11 @@ const emit = defineEmits<{
 .tool-btn.compact {
   justify-content: center;
   min-width: 0;
-  min-height: 38px;
+  min-height: 32px;
   padding: 6px 4px;
   font-size: 10px;
+  text-align: center;
+  white-space: normal;
 }
 
 .tool-btn.active {

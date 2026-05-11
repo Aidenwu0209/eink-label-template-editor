@@ -29,6 +29,56 @@ const customFields = computed(() => {
 });
 
 const saveMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null);
+const OBJECT_TYPE_LABELS: Record<string, string> = {
+  RECT: '矩形框',
+  LINE: '直线',
+  TEXT: '文本',
+  PRICE: '价格',
+  DISCOUNT: '折扣',
+  IMAGE: '图片',
+  QRCODE: '二维码',
+  BARCODE: '条形码',
+};
+
+const selectedObjectType = computed(() => {
+  const obj = editorStore.selectedObject as any;
+  if (!obj) return null;
+  if (typeof obj.extensionType === 'string' && obj.extensionType) return obj.extensionType;
+  if (obj.type === 'rect') return 'RECT';
+  if (obj.type === 'line') return 'LINE';
+  return String(obj.type ?? 'OBJECT').toUpperCase();
+});
+
+const selectedObjectLabel = computed(() => {
+  const type = selectedObjectType.value;
+  if (!type) return editorStore.hasActiveSelection ? '多个元素' : '未选择元素';
+  return OBJECT_TYPE_LABELS[type] ?? type;
+});
+
+const quickFields = computed(() => {
+  const obj = editorStore.selectedObject as any;
+  if (!obj) return [];
+  if (obj.type === 'line') {
+    return [
+      { key: 'x1', label: 'X1', value: Math.round(obj.x1 ?? 0) },
+      { key: 'y1', label: 'Y1', value: Math.round(obj.y1 ?? 0) },
+      { key: 'x2', label: 'X2', value: Math.round(obj.x2 ?? 0) },
+      { key: 'y2', label: 'Y2', value: Math.round(obj.y2 ?? 0) },
+    ];
+  }
+  return [
+    { key: 'left', label: 'X', value: Math.round(obj.left ?? 0) },
+    { key: 'top', label: 'Y', value: Math.round(obj.top ?? 0) },
+    { key: 'width', label: 'W', value: Math.round(obj.width ?? obj.getScaledWidth?.() ?? 0) },
+    { key: 'height', label: 'H', value: Math.round(obj.height ?? obj.getScaledHeight?.() ?? 0) },
+  ];
+});
+
+function updateQuickNumber(key: string, event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value);
+  if (!Number.isFinite(value)) return;
+  void editorStore.updateObjectProp(key, value);
+}
 
 async function handleSave() {
   try {
@@ -215,7 +265,7 @@ onUnmounted(() => {
 
     <main class="editor-shell">
       <aside class="toolbox-panel">
-        <div class="panel-caption">添加与编辑</div>
+        <div class="panel-caption">工具</div>
         <EditorToolbar
           :can-undo="editorStore.canUndo"
           :can-redo="editorStore.canRedo"
@@ -253,11 +303,46 @@ onUnmounted(() => {
 
       <section class="editor-stage">
         <div class="stage-options">
-          <div>
-            <span class="stage-title">编辑画布</span>
+          <div class="option-context">
+            <span class="stage-title">{{ selectedObjectLabel }}</span>
             <span class="stage-meta">{{ config.canvas.width }} × {{ config.canvas.height }} px</span>
           </div>
-          <span class="stage-hint">选中元素后在右侧调整属性；拖拽元素排版；预览会实时刷新</span>
+
+          <div v-if="editorStore.selectedObject" class="quick-fields" aria-label="选中元素快捷属性">
+            <label v-for="field in quickFields" :key="field.key" class="quick-field">
+              <span>{{ field.label }}</span>
+              <input
+                type="number"
+                :value="field.value"
+                @change="updateQuickNumber(field.key, $event)"
+              />
+            </label>
+          </div>
+
+          <div class="option-actions" aria-label="选中元素快捷操作">
+            <button class="option-btn" :disabled="!editorStore.canUndo" title="撤销" @click="editorStore.undo()">撤销</button>
+            <button class="option-btn" :disabled="!editorStore.canRedo" title="重做" @click="editorStore.redo()">重做</button>
+            <span class="option-divider"></span>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="左对齐" @click="editorStore.alignSelectedHorizontal('left')">左</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="水平居中" @click="editorStore.alignSelectedHorizontal('center')">中</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="右对齐" @click="editorStore.alignSelectedHorizontal('right')">右</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="顶部对齐" @click="editorStore.alignSelectedVertical('top')">顶</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="垂直居中" @click="editorStore.alignSelectedVertical('middle')">垂中</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="底部对齐" @click="editorStore.alignSelectedVertical('bottom')">底</button>
+            <span class="option-divider"></span>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="置于顶层" @click="editorStore.bringSelectedToFront()">置顶</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="置于底层" @click="editorStore.sendSelectedToBack()">置底</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="复制一份" @click="editorStore.duplicateSelected()">副本</button>
+            <button
+              :class="['option-btn', { active: editorStore.isActiveSelectionLocked }]"
+              :disabled="!editorStore.hasActiveSelection"
+              :title="editorStore.isActiveSelectionLocked ? '解锁' : '锁定'"
+              @click="editorStore.toggleLockSelected()"
+            >
+              {{ editorStore.isActiveSelectionLocked ? '解锁' : '锁定' }}
+            </button>
+            <button class="option-btn danger" :disabled="!editorStore.hasActiveSelection" title="删除" @click="editorStore.deleteSelected()">删除</button>
+          </div>
         </div>
 
         <div ref="workspaceRef" class="stage-viewport">
@@ -299,6 +384,27 @@ onUnmounted(() => {
           :custom-fields="customFields"
           @update-prop="editorStore.updateObjectProp"
         />
+
+        <section class="dock-panel layer-dock">
+          <div class="dock-title-row">
+            <span>图层</span>
+            <span class="dock-kicker">{{ editorStore.layerEntries.length }} 个对象</span>
+          </div>
+          <div class="layer-list">
+            <button
+              v-for="layer in editorStore.layerEntries"
+              :key="layer.id"
+              :class="['layer-row', { active: layer.selected }]"
+              :title="`选择 ${layer.label}`"
+              @click="editorStore.selectObjectById(layer.id)"
+            >
+              <span class="layer-icon">{{ layer.locked ? '锁' : layer.type.slice(0, 1) }}</span>
+              <span class="layer-name">{{ layer.label }}</span>
+              <span class="layer-index">#{{ layer.index + 1 }}</span>
+            </button>
+            <div v-if="!editorStore.layerEntries.length" class="layer-empty">暂无元素</div>
+          </div>
+        </section>
 
         <section class="dock-panel screen-dock">
           <div class="dock-title-row">
@@ -507,7 +613,7 @@ onUnmounted(() => {
 }
 
 .toolbox-panel {
-  width: 142px;
+  width: 118px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -535,18 +641,25 @@ onUnmounted(() => {
 }
 
 .stage-options {
-  height: 42px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 0 18px;
+  gap: 10px;
+  padding: 0 12px;
   color: #c9c0b3;
   background: rgba(18, 19, 20, 0.76);
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.option-context {
+  min-width: 142px;
+  flex: 0 0 auto;
 }
 
 .stage-title {
+  display: block;
   margin-right: 10px;
   color: #f5ede1;
   font-size: 13px;
@@ -557,6 +670,89 @@ onUnmounted(() => {
 .stage-hint {
   font-size: 12px;
   color: #918b83;
+}
+
+.quick-fields {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.quick-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #a9a197;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.quick-field input {
+  width: 58px;
+  height: 30px;
+  padding: 0 6px;
+  color: #f2eadf;
+  background: rgba(0, 0, 0, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.quick-field input:focus {
+  outline: none;
+  border-color: rgba(240, 211, 91, 0.58);
+  box-shadow: 0 0 0 3px rgba(240, 211, 91, 0.09);
+}
+
+.option-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.option-btn {
+  flex: 0 0 auto;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  color: #d8d0c3;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.option-btn:hover:not(:disabled),
+.option-btn.active {
+  color: #fff4c4;
+  border-color: rgba(240, 211, 91, 0.42);
+  background: rgba(240, 211, 91, 0.12);
+}
+
+.option-btn.danger:hover:not(:disabled) {
+  color: #ffd5cd;
+  border-color: rgba(255, 99, 71, 0.46);
+  background: rgba(255, 99, 71, 0.12);
+}
+
+.option-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.option-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .stage-viewport {
@@ -600,7 +796,7 @@ onUnmounted(() => {
 }
 
 .inspector-dock {
-  width: 300px;
+  width: 318px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -650,6 +846,78 @@ onUnmounted(() => {
 
 .screen-dock {
   flex-shrink: 0;
+}
+
+.layer-dock {
+  max-height: 190px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 146px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.layer-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  color: #d8d0c3;
+  background: rgba(0, 0, 0, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.layer-row:hover,
+.layer-row.active {
+  color: #fff5c8;
+  border-color: rgba(240, 211, 91, 0.42);
+  background: rgba(240, 211, 91, 0.12);
+}
+
+.layer-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  color: #17130a;
+  background: #d0b44b;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.layer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.layer-index {
+  color: #8c857b;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.layer-empty {
+  padding: 16px 8px;
+  color: #8d867d;
+  text-align: center;
+  font-size: 12px;
 }
 
 .palette-strip {
@@ -704,11 +972,11 @@ onUnmounted(() => {
   }
 
   .toolbox-panel {
-    width: 126px;
+    width: 110px;
   }
 
   .inspector-dock {
-    width: 272px;
+    width: 286px;
   }
 }
 
@@ -723,11 +991,11 @@ onUnmounted(() => {
   }
 
   .toolbox-panel {
-    width: 112px;
+    width: 104px;
   }
 
   .inspector-dock {
-    width: 248px;
+    width: 260px;
   }
 
   .stage-viewport {

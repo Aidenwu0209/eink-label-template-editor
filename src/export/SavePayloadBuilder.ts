@@ -76,6 +76,17 @@ function widgetIdForObject(obj: FabricObjectJSON, type: string): string {
   return obj.id || nextWidgetId(type);
 }
 
+function widgetGeometry(obj: FabricObjectJSON): Pick<Widget, 'x' | 'y' | 'width' | 'height'> {
+  const scaleX = Number((obj as any).scaleX ?? 1);
+  const scaleY = Number((obj as any).scaleY ?? 1);
+  return {
+    x: Math.round(obj.left ?? 0),
+    y: Math.round(obj.top ?? 0),
+    width: Math.round((obj.width ?? 0) * (Number.isFinite(scaleX) ? scaleX : 1)),
+    height: Math.round((obj.height ?? 0) * (Number.isFinite(scaleY) ? scaleY : 1)),
+  };
+}
+
 // ══════════ Widget Extraction ══════════
 
 function extractWidget(
@@ -92,10 +103,7 @@ function extractWidget(
         id: widgetIdForObject(obj, 'text'),
         type: 'TEXT',
         fieldId: ext.fieldBinding,
-        x: Math.round(obj.left ?? 0),
-        y: Math.round(obj.top ?? 0),
-        width: Math.round(obj.width ?? 0),
-        height: Math.round(obj.height ?? 0),
+        ...widgetGeometry(obj),
         fontSize: (obj as any).fontSize ?? 16,
         fontWeight: (obj as any).fontWeight ?? 'normal',
         color: (obj as any).fill ?? '#000000',
@@ -108,10 +116,7 @@ function extractWidget(
         id: widgetIdForObject(obj, 'price'),
         type: 'PRICE',
         fieldId: 'price',
-        x: Math.round(obj.left ?? 0),
-        y: Math.round(obj.top ?? 0),
-        width: Math.round(obj.width ?? 0),
-        height: Math.round(obj.height ?? 0),
+        ...widgetGeometry(obj),
         defaultValue: previewData?.price != null ? String(previewData.price) : '',
       };
     }
@@ -120,10 +125,7 @@ function extractWidget(
         id: widgetIdForObject(obj, 'discount'),
         type: 'DISCOUNT',
         fieldId: 'discount',
-        x: Math.round(obj.left ?? 0),
-        y: Math.round(obj.top ?? 0),
-        width: Math.round(obj.width ?? 0),
-        height: Math.round(obj.height ?? 0),
+        ...widgetGeometry(obj),
         format: ext?.formatTemplate ?? '{value}折',
         defaultValue: previewData?.discount != null ? String(previewData.discount) : '',
       };
@@ -135,10 +137,7 @@ function extractWidget(
         type: 'IMAGE',
         mode: 'dynamic',
         fieldId: 'imageUrl',
-        x: Math.round(obj.left ?? 0),
-        y: Math.round(obj.top ?? 0),
-        width: Math.round(obj.width ?? 0),
-        height: Math.round(obj.height ?? 0),
+        ...widgetGeometry(obj),
         fit: ext?.fitMode ?? 'contain',
       };
     }
@@ -147,10 +146,7 @@ function extractWidget(
         id: widgetIdForObject(obj, 'qrcode'),
         type: 'QRCODE',
         fieldId: 'qrContent',
-        x: Math.round(obj.left ?? 0),
-        y: Math.round(obj.top ?? 0),
-        width: Math.round(obj.width ?? 0),
-        height: Math.round(obj.height ?? 0),
+        ...widgetGeometry(obj),
         errorCorrection: ext?.errorCorrection ?? 'M',
         margin: ext?.margin ?? 1,
         foregroundColor: ext?.foregroundColor ?? '#000000',
@@ -162,10 +158,7 @@ function extractWidget(
         id: widgetIdForObject(obj, 'barcode'),
         type: 'BARCODE',
         fieldId: 'barcodeContent',
-        x: Math.round(obj.left ?? 0),
-        y: Math.round(obj.top ?? 0),
-        width: Math.round(obj.width ?? 0),
-        height: Math.round(obj.height ?? 0),
+        ...widgetGeometry(obj),
         format: 'CODE128',
         showText: ext?.showText ?? true,
         foregroundColor: ext?.foregroundColor ?? '#000000',

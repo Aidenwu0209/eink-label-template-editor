@@ -168,6 +168,15 @@ export interface PriceExtension {
   decimalStyle: PriceStyleSegment & { offsetY: number };
 }
 
+export interface LayerEntry {
+  id: string;
+  label: string;
+  type: string;
+  index: number;
+  locked: boolean;
+  selected: boolean;
+}
+
 type HorizontalAlignment = 'left' | 'center' | 'right';
 type VerticalAlignment = 'top' | 'middle' | 'bottom';
 type LayerMove = 'forward' | 'backward' | 'front' | 'back';
@@ -216,6 +225,68 @@ const RUNTIME_STATE_KEYS = [
   'locked',
 ];
 
+const OBJECT_TYPE_LABELS: Record<string, string> = {
+  RECT: '矩形框',
+  LINE: '直线',
+  TEXT: '文本',
+  PRICE: '价格',
+  DISCOUNT: '折扣',
+  IMAGE: '图片',
+  QRCODE: '二维码',
+  BARCODE: '条形码',
+};
+
+type PresetElementType =
+  | 'RECT'
+  | 'LINE'
+  | 'TEXT'
+  | 'PRICE'
+  | 'DISCOUNT'
+  | 'IMAGE'
+  | 'QRCODE'
+  | 'BARCODE';
+
+const PRESET_CANVAS_WIDTH = 296;
+const PRESET_CANVAS_HEIGHT = 128;
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (max < min) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
+function roundNumber(value: number): number {
+  return Math.round(Number.isFinite(value) ? value : 0);
+}
+
+function getPresetScale(config: BootConfig): number {
+  const widthScale = config.canvas.width / PRESET_CANVAS_WIDTH;
+  const heightScale = config.canvas.height / PRESET_CANVAS_HEIGHT;
+  return clampNumber(Math.min(widthScale, heightScale), 0.65, 2.5);
+}
+
+function scaledPresetValue(config: BootConfig, value: number): number {
+  return Math.max(1, Math.round(value * getPresetScale(config)));
+}
+
+function fitBoundsToCanvas(config: BootConfig, bounds: VisualBounds): VisualBounds {
+  const canvasWidth = Math.max(1, roundNumber(config.canvas.width));
+  const canvasHeight = Math.max(1, roundNumber(config.canvas.height));
+  const width = clampNumber(roundNumber(bounds.width), 1, canvasWidth);
+  const height = clampNumber(roundNumber(bounds.height), 1, canvasHeight);
+
+  return {
+    left: clampNumber(roundNumber(bounds.left), 0, canvasWidth - width),
+    top: clampNumber(roundNumber(bounds.top), 0, canvasHeight - height),
+    width,
+    height,
+  };
+}
+
+function getNamedPaletteColor(config: BootConfig, colorName: string): string | null {
+  const target = colorName.toLowerCase();
+  return config.screen.profile.palette.find((color) => color.name.toLowerCase() === target)?.hex ?? null;
+}
+
 export const useEditorStore = defineStore('editor', () => {
   const editor = shallowRef<EditorCore | null>(null);
   const isReady = ref(false);
@@ -242,6 +313,31 @@ export const useEditorStore = defineStore('editor', () => {
     selectionVersion.value;
     const objects = getActiveDrawableObjects();
     return objects.length > 0 && objects.every(isObjectLocked);
+  });
+  const layerEntries = computed<LayerEntry[]>(() => {
+    selectionVersion.value;
+    const core = editor.value;
+    if (!core) return [];
+
+    const activeIds = new Set(
+      getActiveDrawableObjects(core)
+        .map((obj) => (obj as any).id)
+        .filter((id): id is string => Boolean(id))
+    );
+
+    return getCanvasDrawableObjects(core)
+      .map((obj, index) => {
+        const id = ensureObjectId(obj);
+        return {
+          id: id ?? `layer_${index}`,
+          label: getObjectLayerLabel(obj, index),
+          type: getObjectType(obj),
+          index,
+          locked: isObjectLocked(obj),
+          selected: id ? activeIds.has(id) : false,
+        };
+      })
+      .reverse();
   });
 
   function initEditor(el: HTMLCanvasElement, config: BootConfig) {
@@ -306,7 +402,154 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function ensureAllObjectIds(core: EditorCore): void {
-    getCanvasDrawableObjects(core).forEach(ensureObjectId);
+    getCanvasDrawableObjects(core).forEach((obj) => {
+      ensureObjectId(obj);
+      prepareEditableObject(obj);
+    });
+  }
+
+  function getObjectType(obj: fabric.Object): string {
+    const ext = (obj as any).extensionType;
+    if (typeof ext === 'string' && ext) return ext;
+    if (obj.type === 'rect') return 'RECT';
+    if (obj.type === 'line') return 'LINE';
+    return String(obj.type ?? 'OBJECT').toUpperCase();
+  }
+
+  function prepareEditableObject(obj: fabric.Object): void {
+    if (isWorkspaceObject(obj)) return;
+
+    const locked = isObjectLocked(obj);
+    obj.set({
+      selectable: true,
+      evented: true,
+      hasBorders: true,
+      hasControls: !locked,
+      hoverCursor: locked ? 'not-allowed' : 'move',
+      moveCursor: locked ? 'not-allowed' : 'move',
+      lockScalingFlip: true,
+      transparentCorners: false,
+      cornerStyle: 'rect',
+      cornerColor: '#f5d74f',
+      cornerStrokeColor: '#1f6feb',
+      borderColor: '#82b1ff',
+      padding: 2,
+    } as any);
+
+    if ('editable' in obj) {
+      obj.set('editable' as any, !locked);
+    }
+  }
+
+  function getPresetColumnMetrics(config: BootConfig) {
+    const scale = getPresetScale(config);
+    const margin = clampNumber(Math.round(12 * scale), 6, Math.max(6, Math.floor(Math.min(config.canvas.width, config.canvas.height) / 5)));
+    const gutter = Math.max(4, Math.round(8 * scale));
+    const rightSize = clampNumber(
+      Math.round(56 * scale),
+      28,
+      Math.max(28, Math.min(config.canvas.width - margin * 2, config.canvas.height - margin * 2, Math.round(68 * scale)))
+    );
+    const rightLeft = Math.max(margin, config.canvas.width - margin - rightSize);
+    const mainRight = Math.max(margin, rightLeft - gutter);
+    const mainWidth = Math.max(1, mainRight - margin);
+
+    return { margin, gutter, rightSize, rightLeft, mainWidth };
+  }
+
+  function getElementPresetBounds(core: EditorCore, type: PresetElementType): VisualBounds {
+    const config = core.bootConfig;
+    const scale = getPresetScale(config);
+    const { margin, gutter, rightSize, rightLeft, mainWidth } = getPresetColumnMetrics(config);
+    const canvasWidth = config.canvas.width;
+    const canvasHeight = config.canvas.height;
+
+    const textHeight = scaledPresetValue(config, 24);
+    const priceHeight = scaledPresetValue(config, 38);
+    const discountWidth = clampNumber(scaledPresetValue(config, 58), 36, Math.max(36, mainWidth));
+    const discountHeight = scaledPresetValue(config, 26);
+    const barcodeHeight = scaledPresetValue(config, 30);
+    const qrSize = clampNumber(
+      scaledPresetValue(config, 64),
+      30,
+      Math.max(30, Math.min(canvasWidth - margin * 2, canvasHeight - margin * 2, scaledPresetValue(config, 72)))
+    );
+
+    const presets: Record<PresetElementType, VisualBounds> = {
+      RECT: {
+        left: margin,
+        top: margin,
+        width: canvasWidth - margin * 2,
+        height: canvasHeight - margin * 2,
+      },
+      LINE: {
+        left: margin,
+        top: Math.round(canvasHeight * 0.5),
+        width: canvasWidth - margin * 2,
+        height: 1,
+      },
+      TEXT: {
+        left: margin,
+        top: margin,
+        width: Math.min(mainWidth, scaledPresetValue(config, 168)),
+        height: textHeight,
+      },
+      PRICE: {
+        left: margin,
+        top: clampNumber(Math.round(canvasHeight * 0.36), margin + textHeight + 2, canvasHeight - margin - priceHeight),
+        width: Math.min(mainWidth, scaledPresetValue(config, 132)),
+        height: priceHeight,
+      },
+      DISCOUNT: {
+        left: margin + Math.min(mainWidth - discountWidth, scaledPresetValue(config, 136)),
+        top: clampNumber(Math.round(canvasHeight * 0.42), margin, canvasHeight - margin - discountHeight),
+        width: discountWidth,
+        height: discountHeight,
+      },
+      IMAGE: {
+        left: rightLeft,
+        top: margin,
+        width: rightSize,
+        height: rightSize,
+      },
+      QRCODE: {
+        left: canvasWidth - margin - qrSize,
+        top: canvasHeight - margin - qrSize,
+        width: qrSize,
+        height: qrSize,
+      },
+      BARCODE: {
+        left: margin,
+        top: canvasHeight - margin - barcodeHeight,
+        width: Math.min(mainWidth, scaledPresetValue(config, 180)),
+        height: barcodeHeight,
+      },
+    };
+
+    const existingSameTypeCount = getCanvasDrawableObjects(core).filter((obj) => getObjectType(obj) === type).length;
+    const offset = existingSameTypeCount % 5 * Math.max(4, Math.round(6 * scale));
+    const base = presets[type];
+    const cascaded = type === 'LINE'
+      ? { ...base, top: base.top + offset }
+      : { ...base, left: base.left + offset, top: base.top + offset };
+
+    return fitBoundsToCanvas(config, cascaded);
+  }
+
+  function getPaletteAccentColors(config: BootConfig): { accent: string; onAccent: string } {
+    const red = getNamedPaletteColor(config, 'Red');
+    if (red) return { accent: red, onAccent: '#FFFFFF' };
+    return { accent: '#000000', onAccent: '#FFFFFF' };
+  }
+
+  function getObjectLayerLabel(obj: fabric.Object, index: number): string {
+    const type = getObjectType(obj);
+    const typeLabel = OBJECT_TYPE_LABELS[type] ?? type;
+    if (type === 'TEXT') {
+      const text = ((obj as fabric.Textbox).text ?? '').trim();
+      return text ? `${typeLabel} · ${text.slice(0, 12)}` : typeLabel;
+    }
+    return `${typeLabel} ${index + 1}`;
   }
 
   function findWorkspace(core: EditorCore): fabric.Object | undefined {
@@ -430,6 +673,116 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
+  function hasObjectScale(obj: fabric.Object): boolean {
+    return Math.abs((obj.scaleX ?? 1) - 1) > 0.001 || Math.abs((obj.scaleY ?? 1) - 1) > 0.001;
+  }
+
+  function normalizeRectTransform(obj: fabric.Object): void {
+    if (!hasObjectScale(obj)) return;
+    const bounds = getObjectBounds(obj);
+    obj.set({
+      left: bounds.left,
+      top: bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+      scaleX: 1,
+      scaleY: 1,
+    });
+    obj.setCoords();
+  }
+
+  function normalizeTextboxTransform(obj: fabric.Textbox): void {
+    if (!hasObjectScale(obj)) return;
+    const bounds = getObjectBounds(obj);
+    const scaledFontSize = Math.max(6, Math.round((obj.fontSize ?? 16) * (obj.scaleY ?? 1)));
+    obj.set({
+      left: bounds.left,
+      top: bounds.top,
+      width: bounds.width,
+      fontSize: scaledFontSize,
+      scaleX: 1,
+      scaleY: 1,
+    });
+    updateDynamicText(obj);
+    obj.setCoords();
+  }
+
+  function clampObjectToCanvas(core: EditorCore, obj: fabric.Object): void {
+    if (isWorkspaceObject(obj)) return;
+
+    const rect = obj.getBoundingRect();
+    let deltaX = 0;
+    let deltaY = 0;
+
+    if (rect.width >= core.canvasWidth) {
+      deltaX = -rect.left;
+    } else if (rect.left < 0) {
+      deltaX = -rect.left;
+    } else if (rect.left + rect.width > core.canvasWidth) {
+      deltaX = core.canvasWidth - (rect.left + rect.width);
+    }
+
+    if (rect.height >= core.canvasHeight) {
+      deltaY = -rect.top;
+    } else if (rect.top < 0) {
+      deltaY = -rect.top;
+    } else if (rect.top + rect.height > core.canvasHeight) {
+      deltaY = core.canvasHeight - (rect.top + rect.height);
+    }
+
+    if (Math.abs(deltaX) < 0.001 && Math.abs(deltaY) < 0.001) return;
+
+    obj.set({
+      left: Math.round((obj.left ?? 0) + deltaX),
+      top: Math.round((obj.top ?? 0) + deltaY),
+    });
+    obj.setCoords();
+  }
+
+  async function normalizeModifiedObject(core: EditorCore, obj: fabric.Object): Promise<void> {
+    if (isWorkspaceObject(obj)) return;
+    prepareEditableObject(obj);
+
+    const type = getObjectType(obj);
+    if (type === 'LINE') {
+      clampObjectToCanvas(core, obj);
+      return;
+    }
+
+    if (type === 'TEXT' && obj instanceof fabric.Textbox) {
+      normalizeTextboxTransform(obj);
+      clampObjectToCanvas(core, obj);
+      return;
+    }
+
+    if (type === 'RECT') {
+      normalizeRectTransform(obj);
+      clampObjectToCanvas(core, obj);
+      return;
+    }
+
+    if (hasObjectScale(obj) && (obj as any).extensionType) {
+      await refreshExtendedObject(obj);
+      if (selectedObject.value) {
+        clampObjectToCanvas(core, selectedObject.value);
+      }
+      return;
+    }
+
+    clampObjectToCanvas(core, obj);
+  }
+
+  async function normalizeModifiedTarget(core: EditorCore, target?: fabric.Object): Promise<void> {
+    if (!target || isWorkspaceObject(target)) return;
+
+    if (target.type === 'activeSelection') {
+      getActiveDrawableObjects(core).forEach(prepareEditableObject);
+      return;
+    }
+
+    await normalizeModifiedObject(core, target);
+  }
+
   function bindHistoryEvents(core: EditorCore): void {
     const onCanvasChanged = (event: { target?: fabric.Object }) => {
       if (historySuppression > 0) return;
@@ -437,9 +790,23 @@ export const useEditorStore = defineStore('editor', () => {
       commitHistory();
     };
 
+    const onObjectModified = (event: { target?: fabric.Object }) => {
+      if (historySuppression > 0) return;
+      if (event.target && isWorkspaceObject(event.target)) return;
+
+      historySuppression++;
+      void normalizeModifiedTarget(core, event.target)
+        .finally(() => {
+          historySuppression--;
+          selectionVersion.value++;
+          core.fabricCanvas.requestRenderAll();
+          commitHistory();
+        });
+    };
+
     core.fabricCanvas.on('object:added', onCanvasChanged);
     core.fabricCanvas.on('object:removed', onCanvasChanged);
-    core.fabricCanvas.on('object:modified', onCanvasChanged);
+    core.fabricCanvas.on('object:modified', onObjectModified);
   }
 
   async function loadCanvasJSON(core: EditorCore, json: FabricJSON): Promise<void> {
@@ -525,6 +892,7 @@ export const useEditorStore = defineStore('editor', () => {
     const core = editor.value;
     if (!core) return;
     ensureObjectId(obj);
+    prepareEditableObject(obj);
     runHistoryMutation(() => {
       core.fabricCanvas.add(obj);
       core.fabricCanvas.setActiveObject(obj);
@@ -534,11 +902,16 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function getObjectBounds(obj: fabric.Object): VisualBounds {
+    const scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX ?? 1 : 1;
+    const scaleY = Number.isFinite(obj.scaleY) ? obj.scaleY ?? 1 : 1;
+    const width = obj.width ?? obj.getScaledWidth?.() ?? 1;
+    const height = obj.height ?? obj.getScaledHeight?.() ?? 1;
+
     return {
       left: Math.round(obj.left ?? 0),
       top: Math.round(obj.top ?? 0),
-      width: Math.max(1, Math.round(obj.width ?? obj.getScaledWidth() ?? 1)),
-      height: Math.max(1, Math.round(obj.height ?? obj.getScaledHeight() ?? 1)),
+      width: Math.max(1, Math.round(width * scaleX)),
+      height: Math.max(1, Math.round(height * scaleY)),
     };
   }
 
@@ -547,6 +920,14 @@ export const useEditorStore = defineStore('editor', () => {
     if ((obj as any).extensionType !== 'TEXT' || !ext?.fieldBinding) return;
     const value = editor.value?.bootConfig.previewData?.[ext.fieldBinding];
     (obj as fabric.Textbox).set('text', value == null ? '' : String(value));
+  }
+
+  function isCompositeVisualType(type: string | undefined): boolean {
+    return type === 'PRICE'
+      || type === 'DISCOUNT'
+      || type === 'IMAGE'
+      || type === 'QRCODE'
+      || type === 'BARCODE';
   }
 
   function copyObjectRuntimeState(oldObj: fabric.Object, nextObj: fabric.Object): void {
@@ -567,6 +948,7 @@ export const useEditorStore = defineStore('editor', () => {
     const core = editor.value;
     if (!core) return;
     copyObjectRuntimeState(oldObj, nextObj);
+    prepareEditableObject(nextObj);
     const index = core.fabricCanvas.getObjects().indexOf(oldObj);
     core.fabricCanvas.remove(oldObj);
     core.fabricCanvas.insertAt(Math.max(index, 0), nextObj);
@@ -575,19 +957,12 @@ export const useEditorStore = defineStore('editor', () => {
     core.fabricCanvas.renderAll();
   }
 
-  async function refreshExtendedObject(obj: fabric.Object): Promise<void> {
+  async function refreshExtendedObjectWithBounds(obj: fabric.Object, nextBounds: VisualBounds): Promise<void> {
     const core = editor.value;
     if (!core) return;
     const type = (obj as any).extensionType as string | undefined;
     const ext = (obj as any).extension;
-    const bounds = getObjectBounds(obj);
-
-    if (type === 'TEXT') {
-      updateDynamicText(obj);
-      obj.setCoords();
-      core.fabricCanvas.renderAll();
-      return;
-    }
+    const bounds = fitBoundsToCanvas(core.bootConfig, nextBounds);
 
     if (type === 'PRICE') {
       replaceObject(obj, createPriceVisual(core.bootConfig, bounds, ext as PriceExtension));
@@ -611,22 +986,31 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
+  async function refreshExtendedObject(obj: fabric.Object): Promise<void> {
+    const core = editor.value;
+    if (!core) return;
+    const type = (obj as any).extensionType as string | undefined;
+
+    if (type === 'TEXT') {
+      updateDynamicText(obj);
+      obj.setCoords();
+      core.fabricCanvas.renderAll();
+      return;
+    }
+
+    await refreshExtendedObjectWithBounds(obj, getObjectBounds(obj));
+  }
+
   function addRect(): void {
     const core = editor.value;
     if (!core) return;
 
     const config = core.bootConfig;
-    const w = Math.min(100, config.canvas.width * 0.3);
-    const h = Math.min(60, config.canvas.height * 0.3);
-    const left = Math.round((config.canvas.width - w) / 2);
-    const top = Math.round((config.canvas.height - h) / 2);
+    const bounds = getElementPresetBounds(core, 'RECT');
 
     const rect = new fabric.Rect({
-      left,
-      top,
-      width: w,
-      height: h,
-      fill: config.screen.profile.defaultBackground === '#FFFFFF' ? '#000000' : '#FFFFFF',
+      ...bounds,
+      fill: config.screen.profile.defaultBackground === '#FFFFFF' ? '#FFFFFF' : '#000000',
       stroke: '#000000',
       strokeWidth: 1,
     });
@@ -639,15 +1023,15 @@ export const useEditorStore = defineStore('editor', () => {
     const core = editor.value;
     if (!core) return;
 
-    const config = core.bootConfig;
-    const x1 = Math.round(config.canvas.width * 0.2);
-    const y1 = Math.round(config.canvas.height / 2);
-    const x2 = Math.round(config.canvas.width * 0.8);
+    const bounds = getElementPresetBounds(core, 'LINE');
+    const x1 = bounds.left;
+    const y1 = bounds.top;
+    const x2 = bounds.left + bounds.width;
     const y2 = y1;
 
     const line = new fabric.Line([x1, y1, x2, y2], {
       stroke: '#000000',
-      strokeWidth: 2,
+      strokeWidth: 1,
     });
     (line as any).extensionType = 'LINE';
 
@@ -658,22 +1042,19 @@ export const useEditorStore = defineStore('editor', () => {
     const core = editor.value;
     if (!core) return;
 
-    const config = core.bootConfig;
-    const w = Math.min(200, config.canvas.width * 0.6);
-    const h = 40;
-    const left = Math.round((config.canvas.width - w) / 2);
-    const top = Math.round((config.canvas.height - h) / 2);
+    const bounds = getElementPresetBounds(core, 'TEXT');
 
-    const text = new fabric.Textbox('文本', {
-      left,
-      top,
-      width: w,
+    const text = new fabric.Textbox('商品名称', {
+      left: bounds.left,
+      top: bounds.top,
+      width: bounds.width,
       fontFamily: 'AlibabaPuHuiTi',
-      fontSize: 16,
-      fontWeight: 'normal',
+      fontSize: Math.max(10, scaledPresetValue(core.bootConfig, 16)),
+      fontWeight: 'bold',
       fill: '#000000',
       textAlign: 'left',
       lineHeight: 1.2,
+      editable: true,
     });
     (text as any).extensionType = 'TEXT';
     (text as any).extension = {
@@ -691,23 +1072,21 @@ export const useEditorStore = defineStore('editor', () => {
     if (!core) return;
 
     const config = core.bootConfig;
-    const w = Math.min(100, config.canvas.width * 0.3);
-    const h = 40;
-    const left = Math.round((config.canvas.width - w) / 2);
-    const top = Math.round((config.canvas.height - h) / 2);
+    const bounds = getElementPresetBounds(core, 'DISCOUNT');
+    const { accent, onAccent } = getPaletteAccentColors(config);
 
     const ext = {
       fieldBinding: 'discount',
       formatTemplate: '{value}折',
-      backgroundColor: '#FFFFFF',
-      textColor: '#000000',
-      fontSize: 20,
-      fontWeight: 'normal' as const,
+      backgroundColor: accent,
+      textColor: onAccent,
+      fontSize: Math.max(10, Math.min(bounds.height - 6, scaledPresetValue(config, 17))),
+      fontWeight: 'bold' as const,
       textAlign: 'center' as const,
       verticalAlign: 'middle' as const,
     } satisfies DiscountExtension;
 
-    addVisualObject(createDiscountVisual({ left, top, width: w, height: h }, config.previewData?.discount, ext));
+    addVisualObject(createDiscountVisual(bounds, config.previewData?.discount, ext));
   }
 
   function addPrice(): void {
@@ -715,10 +1094,8 @@ export const useEditorStore = defineStore('editor', () => {
     if (!core) return;
 
     const config = core.bootConfig;
-    const w = Math.min(160, config.canvas.width * 0.5);
-    const h = 50;
-    const left = Math.round((config.canvas.width - w) / 2);
-    const top = Math.round((config.canvas.height - h) / 2);
+    const bounds = getElementPresetBounds(core, 'PRICE');
+    const { accent } = getPaletteAccentColors(config);
 
     const ext = {
       fieldBinding: 'price',
@@ -728,24 +1105,24 @@ export const useEditorStore = defineStore('editor', () => {
       thousandSeparator: ',',
       decimalSeparator: '.',
       currencyStyle: {
-        fontSize: 14,
+        fontSize: Math.max(9, scaledPresetValue(config, 13)),
         fontWeight: 'normal' as const,
         color: '#000000',
       },
       integerStyle: {
-        fontSize: 28,
+        fontSize: Math.max(18, Math.min(bounds.height - 6, scaledPresetValue(config, 28))),
         fontWeight: 'bold' as const,
-        color: '#000000',
+        color: accent,
       },
       decimalStyle: {
-        fontSize: 16,
+        fontSize: Math.max(10, scaledPresetValue(config, 15)),
         fontWeight: 'normal' as const,
-        color: '#000000',
-        offsetY: -12,
+        color: accent,
+        offsetY: -Math.max(6, scaledPresetValue(config, 10)),
       },
     } satisfies PriceExtension;
 
-    addVisualObject(createPriceVisual(config, { left, top, width: w, height: h }, ext));
+    addVisualObject(createPriceVisual(config, bounds, ext));
   }
 
   async function addStaticImage(): Promise<void> {
@@ -753,9 +1130,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (!core) return;
 
     const config = core.bootConfig;
-    const size = Math.min(80, config.canvas.width * 0.25, config.canvas.height * 0.65);
-    const left = Math.round((config.canvas.width - size) / 2);
-    const top = Math.round((config.canvas.height - size) / 2);
+    const bounds = getElementPresetBounds(core, 'IMAGE');
 
     const ext = {
       source: 'static',
@@ -765,7 +1140,7 @@ export const useEditorStore = defineStore('editor', () => {
       backgroundColor: '#FFFFFF',
     } satisfies ImageExtension;
 
-    addVisualObject(await createImageVisual({ left, top, width: size, height: size }, ext));
+    addVisualObject(await createImageVisual(bounds, ext));
   }
 
   async function addDynamicImage(): Promise<void> {
@@ -773,9 +1148,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (!core) return;
 
     const config = core.bootConfig;
-    const size = Math.min(80, config.canvas.width * 0.25, config.canvas.height * 0.65);
-    const left = Math.round((config.canvas.width - size) / 2);
-    const top = Math.round((config.canvas.height - size) / 2);
+    const bounds = getElementPresetBounds(core, 'IMAGE');
 
     const previewUrl = config.previewData?.imageUrl ?? '';
 
@@ -787,7 +1160,7 @@ export const useEditorStore = defineStore('editor', () => {
       backgroundColor: '#FFFFFF',
     } satisfies ImageExtension;
 
-    addVisualObject(await createImageVisual({ left, top, width: size, height: size }, ext));
+    addVisualObject(await createImageVisual(bounds, ext));
   }
 
   function addQrcode(): void {
@@ -795,9 +1168,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (!core) return;
 
     const config = core.bootConfig;
-    const size = Math.min(80, config.canvas.width * 0.25, config.canvas.height * 0.5);
-    const left = Math.round((config.canvas.width - size) / 2);
-    const top = Math.round((config.canvas.height - size) / 2);
+    const bounds = getElementPresetBounds(core, 'QRCODE');
 
     const ext = {
       fieldBinding: 'qrContent',
@@ -807,7 +1178,7 @@ export const useEditorStore = defineStore('editor', () => {
       backgroundColor: '#FFFFFF',
     } satisfies QrcodeExtension;
 
-    addVisualObject(createQrcodeVisual({ left, top, width: size, height: size }, config.previewData?.qrContent, ext));
+    addVisualObject(createQrcodeVisual(bounds, config.previewData?.qrContent, ext));
   }
 
   function addBarcode(): void {
@@ -815,10 +1186,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (!core) return;
 
     const config = core.bootConfig;
-    const w = Math.min(180, config.canvas.width * 0.7);
-    const h = Math.min(42, config.canvas.height * 0.25);
-    const left = Math.round((config.canvas.width - w) / 2);
-    const top = Math.round((config.canvas.height - h) / 2);
+    const bounds = getElementPresetBounds(core, 'BARCODE');
 
     const ext = {
       fieldBinding: 'barcodeContent',
@@ -828,7 +1196,7 @@ export const useEditorStore = defineStore('editor', () => {
       backgroundColor: '#FFFFFF',
     } satisfies BarcodeExtension;
 
-    addVisualObject(createBarcodeVisual({ left, top, width: w, height: h }, config.previewData?.barcodeContent, ext));
+    addVisualObject(createBarcodeVisual(bounds, config.previewData?.barcodeContent, ext));
   }
 
   async function updateObjectProp(key: string, value: unknown): Promise<void> {
@@ -836,6 +1204,7 @@ export const useEditorStore = defineStore('editor', () => {
     const core = editor.value;
     if (!obj || !core) return;
     let shouldRefreshVisual = false;
+    let didRefreshVisual = false;
 
     historySuppression++;
     try {
@@ -891,14 +1260,36 @@ export const useEditorStore = defineStore('editor', () => {
           ext[extKey] = value;
         }
         shouldRefreshVisual = true;
+      } else if (
+        isCompositeVisualType((obj as any).extensionType as string | undefined)
+        && ['left', 'top', 'width', 'height'].includes(key)
+      ) {
+        const bounds = getObjectBounds(obj);
+        if (key === 'left' || key === 'top') {
+          bounds[key] = Number(value);
+        } else if (key === 'width') {
+          bounds.width = Math.max(1, Number(value));
+        } else {
+          bounds.height = Math.max(1, Number(value));
+        }
+        await refreshExtendedObjectWithBounds(obj, bounds);
+        didRefreshVisual = true;
       } else {
-        obj.set(key as any, value);
+        if (key === 'left' || key === 'top') {
+          const rect = obj.getBoundingRect();
+          const current = key === 'left' ? rect.left : rect.top;
+          obj.set(key as any, Math.round(((obj as any)[key] ?? 0) + Number(value) - current));
+        } else {
+          obj.set(key as any, value);
+        }
         shouldRefreshVisual = Boolean((obj as any).extensionType)
           && ['width', 'height', 'left', 'top'].includes(key);
       }
 
       obj.setCoords();
-      if (shouldRefreshVisual) {
+      if (didRefreshVisual) {
+        core.fabricCanvas.renderAll();
+      } else if (shouldRefreshVisual) {
         await refreshExtendedObject(obj);
       } else {
         core.fabricCanvas.renderAll();
@@ -997,6 +1388,7 @@ export const useEditorStore = defineStore('editor', () => {
       core.fabricCanvas.discardActiveObject();
       objects.forEach((obj) => {
         assignFreshObjectId(obj);
+        prepareEditableObject(obj);
         obj.set({
           left: Math.round((obj.left ?? 0) + offset),
           top: Math.round((obj.top ?? 0) + offset),
@@ -1233,6 +1625,14 @@ export const useEditorStore = defineStore('editor', () => {
     });
   }
 
+  function selectObjectById(id: string): void {
+    const core = editor.value;
+    if (!core) return;
+    const obj = getCanvasDrawableObjects(core).find((item) => (item as any).id === id);
+    if (!obj) return;
+    selectObjects(core, [obj]);
+  }
+
   /** Get TEXT extension data from selected object */
   function getTextExtension(): TextExtension | null {
     const obj = selectedObject.value;
@@ -1370,6 +1770,7 @@ export const useEditorStore = defineStore('editor', () => {
     hasClipboard,
     hasActiveSelection,
     isActiveSelectionLocked,
+    layerEntries,
     initEditor,
     loadTemplate,
     getPalette,
@@ -1396,6 +1797,7 @@ export const useEditorStore = defineStore('editor', () => {
     alignSelectedHorizontal,
     alignSelectedVertical,
     toggleLockSelected,
+    selectObjectById,
     getTextExtension,
     getImageExtension,
     getPriceExtension,
