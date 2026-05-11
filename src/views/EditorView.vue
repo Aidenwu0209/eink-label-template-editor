@@ -1071,7 +1071,7 @@ onUnmounted(() => {
               <button :title="t('editor.zoomIn')" @click="previewZoomIn">+</button>
               <button :title="t('editor.resetZoom')" @click="resetPreviewZoom">100%</button>
               <button :title="t('editor.fitPreview')" @click="fitPreviewZoom">{{ t('editor.fitPreview') }}</button>
-              <button :title="t('editor.fullscreen')" @click="openPreviewOverlay">{{ t('editor.fullscreen') }}</button>
+              <button class="preview-icon-btn" :title="t('editor.fullscreen')" @click="openPreviewOverlay">⛶</button>
             </div>
           </div>
           <div class="preview-stage">
@@ -2037,13 +2037,18 @@ onUnmounted(() => {
 }
 
 .preview-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 8px;
   flex-wrap: nowrap;
   padding: 8px 8px;
 }
 
 .preview-dock-title {
-  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2058,17 +2063,20 @@ onUnmounted(() => {
   align-items: center;
   gap: 3px;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   justify-content: flex-end;
   flex-wrap: nowrap;
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .preview-controls button {
   flex: 0 0 auto;
   height: 22px;
   min-width: 22px;
+  max-width: 54px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0 4px;
   color: var(--text-main);
   background: rgba(255, 255, 255, 0.055);
@@ -2077,6 +2085,13 @@ onUnmounted(() => {
   font-size: 9px;
   font-weight: 800;
   cursor: pointer;
+}
+
+.preview-controls .preview-icon-btn {
+  width: 22px;
+  min-width: 22px;
+  padding: 0;
+  font-size: 12px;
 }
 
 .preview-controls span {
