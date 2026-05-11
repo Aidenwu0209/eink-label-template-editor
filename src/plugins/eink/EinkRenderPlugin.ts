@@ -90,6 +90,10 @@ export class EinkRenderPlugin extends BasePlugin {
   }
 
   private scheduleRender(): void {
+    if (this.isDestroyed || this.isRendering) {
+      return;
+    }
+
     this.requestRenderVersion();
     this.clearScheduledRenderTask();
     this.clearDebounceTimer();
