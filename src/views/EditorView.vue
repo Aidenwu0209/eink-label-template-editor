@@ -849,8 +849,6 @@ onUnmounted(() => {
       </div>
       <div class="template-actions" aria-label="Template shortcuts">
         <button class="toolbar-btn smart-import" :title="t('editor.smartImportTitle')" @click="showSmartImportDialog = true">{{ t('editor.smartImport') }}</button>
-        <button class="toolbar-btn compact" @click="editorStore.applyStarterTemplate('retail')">{{ t('editor.retailTemplate') }}</button>
-        <button class="toolbar-btn compact" @click="editorStore.applyStarterTemplate('barcode')">{{ t('editor.barcodeTemplate') }}</button>
         <select
           class="canvas-size-select"
           :value="canvasSizeValue"
