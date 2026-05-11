@@ -81,7 +81,11 @@ export function createPriceVisual(
   if (value.currency) {
     const currency = new fabric.Text(value.currency, {
       left: x,
-      top: baseline + Math.max(0, fittedExt.integerStyle.fontSize - fittedExt.currencyStyle.fontSize),
+      top: inlineMarkerTop(
+        baseline,
+        fittedExt.integerStyle.fontSize,
+        fittedExt.currencyStyle.fontSize
+      ),
       fontFamily: 'AlibabaPuHuiTi',
       fontSize: fittedExt.currencyStyle.fontSize,
       fontWeight: fittedExt.currencyStyle.fontWeight,
@@ -90,7 +94,7 @@ export function createPriceVisual(
       evented: false,
     });
     parts.push(currency);
-    x += currency.width ?? fittedExt.currencyStyle.fontSize;
+    x += (currency.width ?? fittedExt.currencyStyle.fontSize) + inlineMarkerGap(fittedExt.currencyStyle.fontSize);
   }
 
   const integer = new fabric.Text(value.integer, {
@@ -134,6 +138,7 @@ export function createDiscountVisual(bounds: VisualBounds, value: unknown, ext: 
     fontWeight: fittedExt.fontWeight,
     fill: fittedExt.textColor,
     textAlign: fittedExt.textAlign,
+    lineHeight: 1,
     selectable: false,
     evented: false,
   });
@@ -441,9 +446,17 @@ function fitDiscountExtension(bounds: VisualBounds, text: string, ext: DiscountE
   };
 }
 
+function inlineMarkerTop(baselineTop: number, integerFontSize: number, markerFontSize: number): number {
+  return baselineTop + Math.max(0, Math.round((integerFontSize - markerFontSize) * 0.24));
+}
+
+function inlineMarkerGap(markerFontSize: number): number {
+  return Math.max(1, Math.round(markerFontSize * 0.15));
+}
+
 function verticalTextTop(height: number, fontSize: number, align: DiscountExtension['verticalAlign']): number {
-  if (align === 'middle') return Math.max(0, (height - fontSize * 1.2) / 2);
-  if (align === 'bottom') return Math.max(0, height - fontSize * 1.2 - 2);
+  if (align === 'middle') return Math.max(0, (height - fontSize) / 2 - fontSize * 0.18);
+  if (align === 'bottom') return Math.max(0, height - fontSize - 2);
   return 2;
 }
 
