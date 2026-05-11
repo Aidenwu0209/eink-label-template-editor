@@ -7,6 +7,14 @@ import { TEXT_OVERFLOW_MODES, IMAGE_FIT_MODES, QRCODE_ERROR_CORRECTIONS } from '
 import type { TextExtension, TextOverflowMode, ImageExtension, ImageFitMode, PriceExtension, DiscountExtension, QrcodeExtension, QrcodeErrorCorrection, BarcodeExtension } from '@/stores/editorStore';
 import type { ColorEntry } from '@/screen/types';
 import type { PreviewData } from '@/boot/types';
+import {
+  DEFAULT_EDITOR_FONT_FAMILY,
+  FONT_FAMILY_OPTIONS,
+  fontWeightFromSelect,
+  fontWeightSelectValue,
+  resolveEditorFontFamily,
+  resolveEditorFontWeight,
+} from '@/fonts';
 
 const props = defineProps<{
   selectedObject: fabric.Object | null;
@@ -72,14 +80,6 @@ const QRCODE_ERROR_CORRECTION_LABELS: Record<QrcodeErrorCorrection, string> = {
   Q: 'Q - 容错较高',
   H: 'H - 容错最高，内容容量最小',
 };
-
-const FONT_FAMILY_OPTIONS = [
-  { value: 'AlibabaPuHuiTi', label: '阿里巴巴普惠体' },
-  { value: 'Arial', label: 'Arial' },
-  { value: 'Helvetica', label: 'Helvetica' },
-  { value: 'Georgia', label: 'Georgia' },
-  { value: 'Times New Roman', label: 'Times New Roman' },
-] as const;
 
 const CURRENCY_PRESETS = [
   { value: 'cny-symbol', label: '¥12.90', patch: { currencySymbol: '¥', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
@@ -152,7 +152,7 @@ const lineStrokeWidth = computed(() => selectedObject.value?.strokeWidth ?? 1);
 const textObj = computed(() => selectedObject.value as fabric.Textbox | null);
 const textContent = computed(() => textObj.value?.text ?? '');
 const textFontSize = computed(() => textObj.value?.fontSize ?? 16);
-const textFontWeight = computed(() => textObj.value?.fontWeight ?? 'normal');
+const textFontWeight = computed(() => fontWeightSelectValue(textObj.value?.fontWeight));
 const textFill = computed(() => (textObj.value?.fill as string) ?? '#000000');
 const textAlign = computed(() => textObj.value?.textAlign ?? 'left');
 
@@ -202,7 +202,7 @@ const priceExt = computed<PriceExtension | null>(() => {
 });
 
 const priceCurrencySymbol = computed(() => priceExt.value?.currencySymbol ?? '¥');
-const priceFontFamily = computed(() => priceExt.value?.fontFamily ?? 'AlibabaPuHuiTi');
+const priceFontFamily = computed(() => resolveEditorFontFamily(priceExt.value?.fontFamily));
 const priceShowCurrency = computed(() => priceExt.value?.showCurrency ?? true);
 const priceDecimalPlaces = computed(() => priceExt.value?.decimalPlaces ?? 2);
 const priceThousandSep = computed(() => priceExt.value?.thousandSeparator ?? ',');
@@ -224,10 +224,15 @@ const discountExt = computed<DiscountExtension | null>(() => {
 
 const discountFormatTemplate = computed(() => discountExt.value?.formatTemplate ?? '{value}折');
 const discountBgColor = computed(() => discountExt.value?.backgroundColor ?? '#FFFFFF');
+const discountShowBackground = computed(() => {
+  const ext = discountExt.value;
+  if (!ext) return false;
+  return ext.showBackground ?? !['transparent', '#FFFFFF', '#ffffff'].includes(ext.backgroundColor);
+});
 const discountTextColor = computed(() => discountExt.value?.textColor ?? '#000000');
-const discountFontFamily = computed(() => discountExt.value?.fontFamily ?? 'AlibabaPuHuiTi');
+const discountFontFamily = computed(() => resolveEditorFontFamily(discountExt.value?.fontFamily));
 const discountFontSize = computed(() => discountExt.value?.fontSize ?? 20);
-const discountFontWeight = computed(() => discountExt.value?.fontWeight ?? 'normal');
+const discountFontWeight = computed(() => fontWeightSelectValue(discountExt.value?.fontWeight));
 const discountTextAlign = computed(() => discountExt.value?.textAlign ?? 'center');
 const discountVerticalAlign = computed(() => discountExt.value?.verticalAlign ?? 'middle');
 const discountWidth = computed(() => (selectedObject.value as fabric.Rect)?.width ?? 0);
@@ -294,23 +299,55 @@ function applyPricePreset(kind: 'sale' | 'plain') {
   const ext = priceExt.value;
   if (!ext) return;
 
+  const fontFamily = resolveEditorFontFamily(ext.fontFamily);
+  const black = paletteHex('black', '#000000');
+  const currencyStyle = ext.currencyStyle ?? { fontSize: 14, fontWeight: 400, color: black };
+  const integerStyle = ext.integerStyle ?? { fontSize: 28, fontWeight: 800, color: black };
+  const decimalStyle = ext.decimalStyle ?? { fontSize: 16, fontWeight: 400, color: black, offsetY: -10 };
+
   if (kind === 'sale') {
-    const accent = paletteHex('red', paletteHex('black', '#000000'));
+    const accent = paletteHex('red', black);
     updatePropsBatch([
-      { key: 'ext.fontFamily', value: ext.fontFamily ?? 'AlibabaPuHuiTi' },
-      { key: 'ext.currencyStyle', value: { ...ext.currencyStyle, fontSize: 13, fontWeight: 'bold', color: '#000000' } },
-      { key: 'ext.integerStyle', value: { ...ext.integerStyle, fontSize: 32, fontWeight: 'bold', color: accent } },
-      { key: 'ext.decimalStyle', value: { ...ext.decimalStyle, fontSize: 16, fontWeight: 'bold', color: accent, offsetY: -10 } },
+      { key: 'ext.fontFamily', value: fontFamily },
+      { key: 'ext.currencyStyle', value: { ...currencyStyle, fontWeight: resolveEditorFontWeight('bold'), color: black } },
+      { key: 'ext.integerStyle', value: { ...integerStyle, fontWeight: resolveEditorFontWeight('bold'), color: accent } },
+      { key: 'ext.decimalStyle', value: { ...decimalStyle, fontWeight: resolveEditorFontWeight('bold'), color: accent } },
     ]);
     return;
   }
 
-  const black = paletteHex('black', '#000000');
   updatePropsBatch([
-    { key: 'ext.fontFamily', value: ext.fontFamily ?? 'AlibabaPuHuiTi' },
-    { key: 'ext.currencyStyle', value: { ...ext.currencyStyle, fontSize: 10, fontWeight: 'normal', color: black } },
-    { key: 'ext.integerStyle', value: { ...ext.integerStyle, fontSize: 22, fontWeight: 'normal', color: black } },
-    { key: 'ext.decimalStyle', value: { ...ext.decimalStyle, fontSize: 12, fontWeight: 'normal', color: black, offsetY: -6 } },
+    { key: 'ext.fontFamily', value: fontFamily },
+    { key: 'ext.currencyStyle', value: { ...currencyStyle, fontWeight: resolveEditorFontWeight('normal'), color: black } },
+    { key: 'ext.integerStyle', value: { ...integerStyle, fontWeight: resolveEditorFontWeight('normal'), color: black } },
+    { key: 'ext.decimalStyle', value: { ...decimalStyle, fontWeight: resolveEditorFontWeight('normal'), color: black } },
+  ]);
+}
+
+function updateDiscountBackgroundMode(value: string) {
+  const enabled = value === 'true';
+  if (!enabled) {
+    updatePropsBatch([
+      { key: 'ext.showBackground', value: false },
+      { key: 'ext.borderWidth', value: 0 },
+    ]);
+    return;
+  }
+
+  const accent = paletteHex('red', paletteHex('yellow', paletteHex('black', '#000000')));
+  const nextBackground = ['transparent', '#FFFFFF', '#ffffff'].includes(discountBgColor.value)
+    ? accent
+    : discountBgColor.value;
+  const nextTextColor = nextBackground.toLowerCase() === paletteHex('yellow', '').toLowerCase()
+    ? '#000000'
+    : discountTextColor.value === '#000000'
+      ? '#FFFFFF'
+      : discountTextColor.value;
+
+  updatePropsBatch([
+    { key: 'ext.showBackground', value: true },
+    { key: 'ext.backgroundColor', value: nextBackground },
+    { key: 'ext.textColor', value: nextTextColor },
   ]);
 }
 
@@ -606,7 +643,7 @@ function handleStaticImageFileChange(event: Event) {
         <select
           class="prop-input"
           :value="textFontWeight"
-          @change="updateProp('fontWeight', ($event.target as HTMLSelectElement).value)"
+          @change="updateProp('fontWeight', fontWeightFromSelect(($event.target as HTMLSelectElement).value))"
         >
           <option value="normal">正常</option>
           <option value="bold">粗体</option>
@@ -624,7 +661,7 @@ function handleStaticImageFileChange(event: Event) {
         <label class="prop-label">字体</label>
         <select
           class="prop-input"
-          :value="textObj?.fontFamily ?? 'AlibabaPuHuiTi'"
+          :value="resolveEditorFontFamily(textObj?.fontFamily ?? DEFAULT_EDITOR_FONT_FAMILY)"
           @change="updateProp('fontFamily', ($event.target as HTMLSelectElement).value)"
         >
           <option v-for="font in FONT_FAMILY_OPTIONS" :key="font.value" :value="font.value">
@@ -682,7 +719,7 @@ function handleStaticImageFileChange(event: Event) {
         <div class="prop-hint">填 0 表示不限制行数。</div>
       </div>
 
-      <div class="prop-note">字体以浏览器和导出环境可用字体为准，推荐优先使用阿里巴巴普惠体。</div>
+      <div class="prop-note">字体使用中英数字常见字体栈；导出端若缺少某字体，会按同一字体栈自动回退。</div>
     </template>
 
     <!-- PRICE properties -->
@@ -834,8 +871,8 @@ function handleStaticImageFileChange(event: Event) {
         <label class="prop-label">字重</label>
         <select
           class="prop-input"
-          :value="priceExt?.currencyStyle?.fontWeight ?? 'normal'"
-          @change="updateProp('ext.currencyStyle', { ...priceExt?.currencyStyle, fontWeight: ($event.target as HTMLSelectElement).value })"
+          :value="fontWeightSelectValue(priceExt?.currencyStyle?.fontWeight)"
+          @change="updateProp('ext.currencyStyle', { ...priceExt?.currencyStyle, fontWeight: fontWeightFromSelect(($event.target as HTMLSelectElement).value) })"
         >
           <option value="normal">正常</option>
           <option value="bold">粗体</option>
@@ -864,8 +901,8 @@ function handleStaticImageFileChange(event: Event) {
         <label class="prop-label">字重</label>
         <select
           class="prop-input"
-          :value="priceExt?.integerStyle?.fontWeight ?? 'bold'"
-          @change="updateProp('ext.integerStyle', { ...priceExt?.integerStyle, fontWeight: ($event.target as HTMLSelectElement).value })"
+          :value="fontWeightSelectValue(priceExt?.integerStyle?.fontWeight)"
+          @change="updateProp('ext.integerStyle', { ...priceExt?.integerStyle, fontWeight: fontWeightFromSelect(($event.target as HTMLSelectElement).value) })"
         >
           <option value="normal">正常</option>
           <option value="bold">粗体</option>
@@ -894,8 +931,8 @@ function handleStaticImageFileChange(event: Event) {
         <label class="prop-label">字重</label>
         <select
           class="prop-input"
-          :value="priceExt?.decimalStyle?.fontWeight ?? 'normal'"
-          @change="updateProp('ext.decimalStyle', { ...priceExt?.decimalStyle, fontWeight: ($event.target as HTMLSelectElement).value })"
+          :value="fontWeightSelectValue(priceExt?.decimalStyle?.fontWeight)"
+          @change="updateProp('ext.decimalStyle', { ...priceExt?.decimalStyle, fontWeight: fontWeightFromSelect(($event.target as HTMLSelectElement).value) })"
         >
           <option value="normal">正常</option>
           <option value="bold">粗体</option>
@@ -975,6 +1012,19 @@ function handleStaticImageFileChange(event: Event) {
         @update:model-value="updateProp('ext.backgroundColor', $event)"
       />
 
+      <div class="prop-group">
+        <label class="prop-label">背景框</label>
+        <select
+          class="prop-input"
+          :value="discountShowBackground ? 'true' : 'false'"
+          @change="updateDiscountBackgroundMode(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="false">不显示</option>
+          <option value="true">显示</option>
+        </select>
+        <div class="prop-hint">普通拖出的折扣默认无框；需要徽章效果时再打开。</div>
+      </div>
+
       <PaletteColorPicker
         label="文字颜色"
         :colors="palette"
@@ -1016,7 +1066,7 @@ function handleStaticImageFileChange(event: Event) {
         <select
           class="prop-input"
           :value="discountFontWeight"
-          @change="updateProp('ext.fontWeight', ($event.target as HTMLSelectElement).value)"
+          @change="updateProp('ext.fontWeight', fontWeightFromSelect(($event.target as HTMLSelectElement).value))"
         >
           <option value="normal">正常</option>
           <option value="bold">粗体</option>

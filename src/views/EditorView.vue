@@ -37,6 +37,13 @@ const TOOLBOX_MIN_WIDTH = 96;
 const TOOLBOX_MAX_WIDTH = 360;
 const TOOLBOX_COLLAPSED_WIDTH = 56;
 const RECENT_TOOL_LIMIT = 6;
+const CANVAS_SIZE_PRESETS = [
+  { label: '296×128', width: 296, height: 128 },
+  { label: '152×60', width: 152, height: 60 },
+  { label: '250×122', width: 250, height: 122 },
+  { label: '400×300', width: 400, height: 300 },
+  { label: '800×480', width: 800, height: 480 },
+] as const;
 
 const screenStore = useScreenStore();
 const editorStore = useEditorStore();
@@ -55,6 +62,8 @@ const recentTools = ref<ToolKind[]>([]);
 const templateSelectValue = ref('');
 const draggedLayerId = ref<string | null>(null);
 const inspectorTab = ref<InspectorTab>('properties');
+const keepLayerTabOnNextSelection = ref(false);
+const lastLayerClickId = ref<string | null>(null);
 const toolboxWidth = ref(TOOLBOX_DEFAULT_WIDTH);
 const isToolboxCollapsed = ref(false);
 const isToolboxPeekOpen = ref(false);
@@ -62,11 +71,19 @@ const isToolboxResizing = ref(false);
 const isToolDropTarget = ref(false);
 const showSmartImportDialog = ref(false);
 const isPreviewOverlayOpen = ref(false);
+let layerClickTimer: number | null = null;
 
 const screenInfo = computed(() => {
   const p = config.screen.profile;
   const modeLabel = config.mode === 'edit' ? '编辑' : '新建';
   return `${modeLabel} | ${config.canvas.width}×${config.canvas.height} | ${p.displayName}`;
+});
+const canvasSizeValue = computed(() => `${config.canvas.width}x${config.canvas.height}`);
+const isCurrentCanvasSizePreset = computed(() => {
+  return CANVAS_SIZE_PRESETS.some((preset) => (
+    preset.width === config.canvas.width
+    && preset.height === config.canvas.height
+  ));
 });
 
 const palette = computed(() => editorStore.getPalette());
@@ -218,6 +235,47 @@ function formatTemplateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function parseCanvasSizeInput(value: string): { width: number; height: number } | null {
+  const match = value.trim().match(/^(\d{2,4})\s*[x×,，\s]\s*(\d{2,4})$/i);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+  return { width, height };
+}
+
+async function applyCanvasSize(width: number, height: number): Promise<void> {
+  await editorStore.resizeCanvas(width, height, true);
+  manualZoom.value = null;
+  previewManualZoom.value = null;
+  fullscreenPreviewManualZoom.value = null;
+  await nextTick();
+  handleWindowResize();
+}
+
+async function handleCanvasSizeChange(event: Event): Promise<void> {
+  const select = event.target as HTMLSelectElement;
+  const value = select.value;
+  select.value = canvasSizeValue.value;
+  if (!value) return;
+
+  if (value === 'custom') {
+    const raw = window.prompt('输入画布尺寸，例如 296x128', `${config.canvas.width}x${config.canvas.height}`);
+    if (!raw) return;
+    const parsed = parseCanvasSizeInput(raw);
+    if (!parsed) {
+      saveMessage.value = { type: 'error', text: '画布尺寸格式不正确，请输入例如 296x128' };
+      setTimeout(() => { saveMessage.value = null; }, 2600);
+      return;
+    }
+    await applyCanvasSize(parsed.width, parsed.height);
+    return;
+  }
+
+  const parsed = parseCanvasSizeInput(value);
+  if (parsed) await applyCanvasSize(parsed.width, parsed.height);
 }
 
 async function saveLocalTemplate(): Promise<void> {
@@ -515,6 +573,44 @@ function handleLayerDragEnd(): void {
   draggedLayerId.value = null;
 }
 
+function clearLayerClickTimer(): void {
+  if (layerClickTimer != null) {
+    window.clearTimeout(layerClickTimer);
+    layerClickTimer = null;
+  }
+}
+
+function selectLayerForCanvas(layerId: string): void {
+  keepLayerTabOnNextSelection.value = true;
+  editorStore.selectObjectById(layerId);
+  void nextTick(() => {
+    keepLayerTabOnNextSelection.value = false;
+  });
+}
+
+function openLayerProperties(layerId: string): void {
+  clearLayerClickTimer();
+  lastLayerClickId.value = null;
+  keepLayerTabOnNextSelection.value = false;
+  editorStore.selectObjectById(layerId);
+  inspectorTab.value = 'properties';
+}
+
+function handleLayerRowClick(layerId: string): void {
+  if (lastLayerClickId.value === layerId && layerClickTimer != null) {
+    openLayerProperties(layerId);
+    return;
+  }
+
+  lastLayerClickId.value = layerId;
+  selectLayerForCanvas(layerId);
+  clearLayerClickTimer();
+  layerClickTimer = window.setTimeout(() => {
+    layerClickTimer = null;
+    lastLayerClickId.value = null;
+  }, 320);
+}
+
 function isEditableKeyTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tagName = target.tagName.toLowerCase();
@@ -656,11 +752,12 @@ const fullscreenPreviewTransformStyle = computed(() => ({
 watch(
   () => editorStore.selectedObject,
   (selected) => {
-    if (selected) inspectorTab.value = 'properties';
+    if (selected && !keepLayerTabOnNextSelection.value) inspectorTab.value = 'properties';
   }
 );
 
 onUnmounted(() => {
+  clearLayerClickTimer();
   window.removeEventListener('resize', handleWindowResize);
   window.removeEventListener('keydown', handleEditorKeydown);
   window.removeEventListener('mousemove', handleToolboxResizeMove);
@@ -687,6 +784,27 @@ onUnmounted(() => {
         <button class="toolbar-btn smart-import" title="上传价签图片并自动识别排版" @click="showSmartImportDialog = true">智能导入</button>
         <button class="toolbar-btn compact" title="套用零售价签固定模板" @click="editorStore.applyStarterTemplate('retail')">零售价签</button>
         <button class="toolbar-btn compact" title="套用条码追踪固定模板" @click="editorStore.applyStarterTemplate('barcode')">条码模板</button>
+        <select
+          class="canvas-size-select"
+          :value="canvasSizeValue"
+          title="切换画布尺寸，现有元素会等比缩放"
+          @change="handleCanvasSizeChange"
+        >
+          <option
+            v-if="!isCurrentCanvasSizePreset"
+            :value="canvasSizeValue"
+          >
+            当前 {{ config.canvas.width }}×{{ config.canvas.height }}
+          </option>
+          <option
+            v-for="preset in CANVAS_SIZE_PRESETS"
+            :key="preset.label"
+            :value="`${preset.width}x${preset.height}`"
+          >
+            {{ preset.label }}
+          </option>
+          <option value="custom">自定义尺寸...</option>
+        </select>
         <select
           v-model="templateSelectValue"
           class="template-select"
@@ -852,8 +970,8 @@ onUnmounted(() => {
 
       <aside class="inspector-dock">
         <section class="dock-panel preview-dock">
-          <div class="dock-title-row">
-            <span>电子墨水屏预览</span>
+          <div class="dock-title-row preview-title-row">
+            <span class="preview-dock-title">电子墨水屏预览</span>
             <div class="preview-controls" aria-label="预览缩放控制">
               <button title="缩小预览" @click="previewZoomOut">−</button>
               <span>{{ previewZoomLabel }}</span>
@@ -932,13 +1050,14 @@ onUnmounted(() => {
                   v-for="layer in editorStore.layerEntries"
                   :key="layer.id"
                   :class="['layer-row', { active: layer.selected, dragging: draggedLayerId === layer.id }]"
-                  :title="`选择 ${layer.label}`"
+                  :title="`单击选中 ${layer.label}，双击打开属性`"
                   draggable="true"
                   @dragstart="handleLayerDragStart(layer.id, $event)"
                   @dragover.prevent
                   @drop="handleLayerDrop(layer.id, $event)"
                   @dragend="handleLayerDragEnd"
-                  @click="editorStore.selectObjectById(layer.id)"
+                  @click="handleLayerRowClick(layer.id)"
+                  @dblclick.stop.prevent="openLayerProperties(layer.id)"
                 >
                   <span class="layer-icon">{{ layer.locked ? '锁' : layer.type.slice(0, 1) }}</span>
                   <span class="layer-name">{{ layer.label }}</span>
@@ -1150,7 +1269,8 @@ onUnmounted(() => {
   border: 1px solid var(--line-faint);
 }
 
-.template-select {
+.template-select,
+.canvas-size-select {
   max-width: 150px;
   height: 28px;
   color: var(--text-main);
@@ -1159,6 +1279,10 @@ onUnmounted(() => {
   border-radius: 8px;
   font-size: 11px;
   font-weight: 650;
+}
+
+.canvas-size-select {
+  max-width: 118px;
 }
 
 .zoom-controls {
@@ -1671,6 +1795,17 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--line-faint);
 }
 
+.preview-title-row {
+  gap: 8px;
+  flex-wrap: nowrap;
+  padding: 8px 8px;
+}
+
+.preview-dock-title {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .dock-kicker {
   color: var(--text-muted);
   font-size: 11px;
@@ -1680,24 +1815,32 @@ onUnmounted(() => {
 .preview-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .preview-controls button {
-  height: 24px;
-  min-width: 24px;
-  padding: 0 6px;
+  flex: 0 0 auto;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 4px;
   color: var(--text-main);
   background: rgba(255, 255, 255, 0.055);
   border: 1px solid var(--line-soft);
   border-radius: 7px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   cursor: pointer;
 }
 
 .preview-controls span {
-  min-width: 36px;
+  flex: 0 0 auto;
+  min-width: 32px;
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 800;

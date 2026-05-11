@@ -9,6 +9,7 @@ import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData } from '@/bo
 import type { ColorEntry } from '@/screen/types';
 import { buildSavePayload, type SavePayload } from '@/export/SavePayloadBuilder';
 import { PRICE_BINDABLE_FIELDS, type PriceBindableField } from '@/fields/constants';
+import { DEFAULT_EDITOR_FONT_FAMILY, resolveEditorFontFamily, resolveEditorFontWeight, type EditorFontWeight } from '@/fonts';
 import type { RecognizedPriceTag } from '@/ocr/types';
 import {
   createPriceTagTemplatePlan,
@@ -98,7 +99,7 @@ export interface ImageExtension {
 /** PRICE style for a single segment (currency / integer / decimal) */
 export interface PriceStyleSegment {
   fontSize: number;
-  fontWeight: 'normal' | 'bold';
+  fontWeight: EditorFontWeight;
   color: string;
 }
 
@@ -156,6 +157,14 @@ export interface DiscountExtension {
   formatTemplate: string;
   /** Background color (palette-constrained) */
   backgroundColor: string;
+  /** Whether to render a filled background badge */
+  showBackground?: boolean;
+  /** Optional badge border color */
+  borderColor?: string;
+  /** Optional badge border width */
+  borderWidth?: number;
+  /** Optional badge corner radius */
+  cornerRadius?: number;
   /** Text color (palette-constrained) */
   textColor: string;
   /** Font family */
@@ -163,7 +172,7 @@ export interface DiscountExtension {
   /** Font size */
   fontSize: number;
   /** Font weight */
-  fontWeight: 'normal' | 'bold';
+  fontWeight: EditorFontWeight;
   /** Horizontal alignment */
   textAlign: 'left' | 'center' | 'right';
   /** Vertical alignment */
@@ -236,6 +245,10 @@ export interface ToolPosition {
 interface HistoryState {
   version?: string;
   background?: unknown;
+  canvas: {
+    width: number;
+    height: number;
+  };
   previewData: PreviewData;
   objects: FabricObjectJSON[];
   selectedIds: string[];
@@ -501,6 +514,27 @@ export const useEditorStore = defineStore('editor', () => {
   function prepareEditableObject(obj: fabric.Object): void {
     if (isWorkspaceObject(obj)) return;
 
+    if (obj instanceof fabric.Textbox) {
+      obj.set({
+        fontFamily: resolveEditorFontFamily(obj.fontFamily as string | undefined),
+        fontWeight: resolveEditorFontWeight(obj.fontWeight),
+      } as any);
+    }
+
+    const ext = (obj as any).extension as Record<string, any> | undefined;
+    if (ext) {
+      if ('fontFamily' in ext) ext.fontFamily = resolveEditorFontFamily(ext.fontFamily);
+      if ('fontWeight' in ext) ext.fontWeight = resolveEditorFontWeight(ext.fontWeight);
+      for (const key of ['currencyStyle', 'integerStyle', 'decimalStyle']) {
+        if (ext[key]?.fontWeight != null) {
+          ext[key] = {
+            ...ext[key],
+            fontWeight: resolveEditorFontWeight(ext[key].fontWeight),
+          };
+        }
+      }
+    }
+
     const locked = isObjectLocked(obj);
     obj.set({
       selectable: true,
@@ -643,13 +677,13 @@ export const useEditorStore = defineStore('editor', () => {
     return { accent: '#000000', onAccent: '#FFFFFF', hasChromaticAccent: false };
   }
 
-  function getDiscountDefaultColors(config: BootConfig): { backgroundColor: string; textColor: string } {
+  function getDiscountBadgeColors(config: BootConfig): { backgroundColor: string; textColor: string } {
     const { accent, onAccent, hasChromaticAccent } = getPaletteAccentColors(config);
     if (hasChromaticAccent) {
       return { backgroundColor: accent, textColor: onAccent };
     }
 
-    return { backgroundColor: '#FFFFFF', textColor: '#000000' };
+    return { backgroundColor: '#000000', textColor: '#FFFFFF' };
   }
 
   function normalizeQrcodeExtension(ext: Partial<QrcodeExtension> | undefined): QrcodeExtension {
@@ -764,6 +798,7 @@ export const useEditorStore = defineStore('editor', () => {
 function historySignature(state: HistoryState): string {
   return JSON.stringify({
     background: state.background ?? null,
+    canvas: state.canvas,
     previewData: state.previewData,
     objects: state.objects,
   });
@@ -782,6 +817,10 @@ function historySignature(state: HistoryState): string {
     return {
       version: json.version,
       background: json.background,
+      canvas: {
+        width: core.bootConfig.canvas.width,
+        height: core.bootConfig.canvas.height,
+      },
       previewData: cloneJson((core.bootConfig.previewData ?? {}) as PreviewData),
       objects,
       selectedIds,
@@ -970,6 +1009,12 @@ function historySignature(state: HistoryState): string {
 
     historySuppression++;
     try {
+      if (
+        core.bootConfig.canvas.width !== state.canvas.width
+        || core.bootConfig.canvas.height !== state.canvas.height
+      ) {
+        core.resizeCanvas(state.canvas.width, state.canvas.height);
+      }
       const json = {
         version: state.version,
         background: state.background,
@@ -1225,9 +1270,9 @@ function historySignature(state: HistoryState): string {
       originX: 'left',
       originY: 'top',
       width: bounds.width,
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
       fontSize: Math.max(10, scaledPresetValue(core.bootConfig, 16)),
-      fontWeight: 'bold',
+      fontWeight: resolveEditorFontWeight('bold'),
       fill: '#000000',
       textAlign: 'left',
       lineHeight: 1.2,
@@ -1265,9 +1310,9 @@ function historySignature(state: HistoryState): string {
       originX: 'left',
       originY: 'top',
       width: bounds.width,
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
       fontSize: scaledPresetValue(config, options.fontSize),
-      fontWeight: options.fontWeight ?? 'bold',
+      fontWeight: resolveEditorFontWeight(options.fontWeight ?? 'bold'),
       fill: options.fill ?? '#000000',
       textAlign: options.textAlign ?? 'left',
       lineHeight: 1.15,
@@ -1296,7 +1341,7 @@ function historySignature(state: HistoryState): string {
     const mainColor = variant === 'main' ? accent : '#000000';
     const ext = {
       fieldBinding,
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
       currencySymbol: '¥',
       showCurrency: true,
       decimalPlaces: 2,
@@ -1324,13 +1369,16 @@ function historySignature(state: HistoryState): string {
   }
 
   function createStarterDiscountObject(config: BootConfig, bounds: VisualBounds): fabric.Group {
-    const { backgroundColor, textColor } = getDiscountDefaultColors(config);
+    const { backgroundColor, textColor } = getDiscountBadgeColors(config);
     const ext = {
       fieldBinding: 'discount',
       formatTemplate: '{value}折',
       backgroundColor,
+      showBackground: true,
+      borderWidth: 0,
+      cornerRadius: 4,
       textColor,
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
       fontSize: scaledPresetValue(config, 23),
       fontWeight: 'bold' as const,
       textAlign: 'center' as const,
@@ -1459,14 +1507,14 @@ function historySignature(state: HistoryState): string {
 
     const config = core.bootConfig;
     const bounds = getToolBounds(core, 'DISCOUNT', position);
-    const { backgroundColor, textColor } = getDiscountDefaultColors(config);
-
     const ext = {
       fieldBinding: 'discount',
       formatTemplate: '{value}折',
-      backgroundColor,
-      textColor,
-      fontFamily: 'AlibabaPuHuiTi',
+      backgroundColor: '#FFFFFF',
+      showBackground: false,
+      borderWidth: 0,
+      textColor: '#000000',
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
       fontSize: Math.max(10, Math.min(bounds.height - 6, scaledPresetValue(config, 17))),
       fontWeight: 'bold' as const,
       textAlign: 'center' as const,
@@ -1486,7 +1534,7 @@ function historySignature(state: HistoryState): string {
 
     const ext = {
       fieldBinding: 'price',
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
       currencySymbol: '¥',
       showCurrency: true,
       decimalPlaces: 2,
@@ -1957,6 +2005,100 @@ function historySignature(state: HistoryState): string {
     }
 
     resetHistoryToCurrent();
+  }
+
+  async function resizeCanvas(width: number, height: number, scaleObjects = true): Promise<void> {
+    const core = editor.value;
+    if (!core) return;
+
+    const nextWidth = clampNumber(roundNumber(width), 16, 4096);
+    const nextHeight = clampNumber(roundNumber(height), 16, 4096);
+    const oldWidth = core.bootConfig.canvas.width;
+    const oldHeight = core.bootConfig.canvas.height;
+    if (nextWidth === oldWidth && nextHeight === oldHeight) return;
+
+    const scaleX = nextWidth / oldWidth;
+    const scaleY = nextHeight / oldHeight;
+    const textScale = Math.min(scaleX, scaleY);
+    const selectedIds = getActiveDrawableObjects(core)
+      .map(ensureObjectId)
+      .filter((id): id is string => Boolean(id));
+
+    historySuppression++;
+    try {
+      core.fabricCanvas.discardActiveObject();
+      core.resizeCanvas(nextWidth, nextHeight);
+      ensureWorkspace(core);
+
+      const objects = getCanvasDrawableObjects(core);
+      if (scaleObjects) {
+        for (const obj of objects) {
+          const type = getObjectType(obj);
+          if (isCompositeVisualType(type)) {
+            const bounds = getObjectBounds(obj);
+            await refreshExtendedObjectWithBounds(obj, {
+              left: bounds.left * scaleX,
+              top: bounds.top * scaleY,
+              width: bounds.width * scaleX,
+              height: bounds.height * scaleY,
+            });
+            continue;
+          }
+
+          if (obj instanceof fabric.Textbox) {
+            obj.set({
+              left: Math.round((obj.left ?? 0) * scaleX),
+              top: Math.round((obj.top ?? 0) * scaleY),
+              width: Math.max(1, Math.round((obj.width ?? obj.getScaledWidth() ?? 1) * scaleX)),
+              fontSize: Math.max(6, Math.round((obj.fontSize ?? 16) * textScale)),
+            } as any);
+          } else if (type === 'LINE') {
+            obj.set({
+              left: Math.round((obj.left ?? 0) * scaleX),
+              top: Math.round((obj.top ?? 0) * scaleY),
+              scaleX: (obj.scaleX ?? 1) * scaleX,
+              scaleY: (obj.scaleY ?? 1) * scaleY,
+              strokeWidth: Math.max(1, Math.round((obj.strokeWidth ?? 1) * textScale)),
+            } as any);
+          } else {
+            const bounds = getObjectBounds(obj);
+            obj.set({
+              left: Math.round(bounds.left * scaleX),
+              top: Math.round(bounds.top * scaleY),
+              width: Math.max(1, Math.round(bounds.width * scaleX)),
+              height: Math.max(1, Math.round(bounds.height * scaleY)),
+              scaleX: 1,
+              scaleY: 1,
+            } as any);
+            if (typeof obj.strokeWidth === 'number') {
+              obj.set('strokeWidth' as any, Math.max(0, Math.round(obj.strokeWidth * textScale)));
+            }
+          }
+          clampObjectToCanvas(core, obj);
+          prepareEditableObject(obj);
+          obj.setCoords();
+        }
+      } else {
+        objects.forEach((obj) => {
+          clampObjectToCanvas(core, obj);
+          obj.setCoords();
+        });
+      }
+
+      const objectsById = new Map(
+        getCanvasDrawableObjects(core).map((obj) => [(obj as any).id, obj] as const)
+      );
+      selectObjects(
+        core,
+        selectedIds.map((id) => objectsById.get(id)).filter((obj): obj is fabric.Object => Boolean(obj))
+      );
+      core.fabricCanvas.renderAll();
+    } finally {
+      historySuppression--;
+    }
+
+    selectionVersion.value++;
+    commitHistory();
   }
 
   async function undo(): Promise<void> {
@@ -2446,6 +2588,7 @@ function historySignature(state: HistoryState): string {
     applyStarterTemplate,
     applyRecognizedPriceTagTemplate,
     clearCanvasObjects,
+    resizeCanvas,
     updateObjectProp,
     updateObjectPropsBatch,
     updatePreviewDataField,

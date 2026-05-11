@@ -30,19 +30,20 @@ const EXTENSION_KEYS = [
  * EditorCore — Fabric.js wrapper with plugin system
  *
  * Key constraints:
- * - Canvas dimensions are frozen at construction time
+ * - Canvas dimensions are controlled by EditorCore.resizeCanvas()
  * - All E-ink logic lives in plugins, not in this class
  * - Plugins communicate via EventBus, not direct coupling
  */
 export class EditorCore {
   private _canvas: fabric.Canvas;
+  private _setCanvasDimensions: fabric.Canvas['setDimensions'] | null = null;
   private _pluginManager: PluginManager;
   private _eventBus: EventBus<EditorEvents>;
   private _config: BootConfig;
   private _disposed = false;
 
-  readonly canvasWidth: number;
-  readonly canvasHeight: number;
+  canvasWidth: number;
+  canvasHeight: number;
 
   constructor(canvasElement: HTMLCanvasElement, config: BootConfig) {
     this._config = config;
@@ -51,6 +52,7 @@ export class EditorCore {
 
     // ★ Create Fabric Canvas with exact dimensions from BootConfig
     this._canvas = this.createFabricCanvas(canvasElement, config);
+    this._setCanvasDimensions = this._canvas.setDimensions.bind(this._canvas);
 
     // Initialize subsystems
     this._eventBus = new EventBus<EditorEvents>();
@@ -104,7 +106,7 @@ export class EditorCore {
   private freezeDimensions(): void {
     this._canvas.setDimensions = (() => {
       console.warn(
-        '[EditorCore] Canvas dimensions are frozen. Ignoring setDimensions call.'
+        '[EditorCore] Canvas dimensions are managed by resizeCanvas(). Ignoring direct setDimensions call.'
       );
       return this._canvas;
     }) as any;
@@ -144,6 +146,25 @@ export class EditorCore {
   }
   get screenProfile(): ScreenProfile {
     return this._config.screen.profile;
+  }
+
+  /** Resize the editor canvas through the single supported runtime path. */
+  resizeCanvas(width: number, height: number): void {
+    const nextWidth = Math.max(1, Math.round(width));
+    const nextHeight = Math.max(1, Math.round(height));
+    this._config.canvas.width = nextWidth;
+    this._config.canvas.height = nextHeight;
+    if (this._config.sourceProfile) {
+      this._config.sourceProfile.width = nextWidth;
+      this._config.sourceProfile.height = nextHeight;
+    }
+    this.canvasWidth = nextWidth;
+    this.canvasHeight = nextHeight;
+    this._setCanvasDimensions?.({ width: nextWidth, height: nextHeight });
+    const el = this._canvas.getElement();
+    el.width = nextWidth;
+    el.height = nextHeight;
+    this._canvas.requestRenderAll();
   }
 
   /** Chain-register a plugin */
