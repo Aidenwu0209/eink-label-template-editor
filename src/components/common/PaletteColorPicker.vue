@@ -43,7 +43,7 @@ function selectColor(hex: string) {
 
 .picker-label {
   font-size: 12px;
-  color: #a69f95;
+  color: var(--text-muted);
   font-weight: 750;
 }
 
@@ -56,20 +56,20 @@ function selectColor(hex: string) {
 .swatch {
   width: 30px;
   height: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22), 0 6px 14px rgba(0, 0, 0, 0.16);
 }
 
 .swatch:hover {
   transform: translateY(-1px);
-  border-color: rgba(240, 211, 91, 0.58);
+  border-color: var(--accent-line);
 }
 
 .swatch.active {
-  border-color: #f0d35b;
-  box-shadow: 0 0 0 3px rgba(240, 211, 91, 0.16), inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  border-color: var(--accent-strong);
+  box-shadow: var(--focus-ring), inset 0 0 0 1px rgba(0, 0, 0, 0.22);
 }
 </style>

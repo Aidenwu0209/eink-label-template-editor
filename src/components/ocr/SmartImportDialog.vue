@@ -338,8 +338,11 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.62);
-  backdrop-filter: blur(8px);
+  background:
+    radial-gradient(circle at 20% 12%, rgba(216, 183, 96, 0.13), transparent 32%),
+    radial-gradient(circle at 82% 18%, rgba(141, 188, 246, 0.075), transparent 30%),
+    rgba(3, 4, 6, 0.78);
+  backdrop-filter: blur(16px);
 }
 
 .ocr-dialog {
@@ -347,11 +350,13 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
   max-height: min(780px, 94vh);
   display: flex;
   flex-direction: column;
-  color: #eee7d8;
-  background: #202123;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-main);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(216, 183, 96, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(33, 36, 43, 0.98), rgba(15, 17, 21, 0.98));
+  border: 1px solid var(--line-strong);
   border-radius: 16px;
-  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.52);
+  box-shadow: var(--shadow-float);
   overflow: hidden;
 }
 
@@ -362,19 +367,19 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
   justify-content: space-between;
   gap: 12px;
   padding: 16px 18px;
-  background: linear-gradient(180deg, rgba(55, 56, 57, 0.98), rgba(33, 34, 35, 0.98));
-  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(39, 42, 49, 0.96), rgba(22, 24, 29, 0.98));
+  border-bottom: 1px solid var(--line-faint);
 }
 
 .ocr-footer {
   justify-content: flex-end;
-  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  border-top: 1px solid var(--line-faint);
   border-bottom: 0;
 }
 
 .ocr-kicker {
   display: block;
-  color: #f0d35b;
+  color: var(--accent-strong);
   font-size: 11px;
   font-weight: 850;
   letter-spacing: 0.08em;
@@ -390,17 +395,18 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
 .ghost-btn,
 .primary-btn,
 .upload-btn {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--line-soft);
   border-radius: 10px;
   cursor: pointer;
   font-weight: 800;
+  transition: color 0.16s, background 0.16s, border-color 0.16s, transform 0.16s;
 }
 
 .icon-btn {
   width: 34px;
   height: 34px;
-  color: #eee7d8;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.065);
   font-size: 22px;
   line-height: 1;
 }
@@ -428,8 +434,8 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
 .field-table,
 .ocr-warnings,
 .ocr-error {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(7, 8, 10, 0.34);
+  border: 1px solid var(--line-faint);
   border-radius: 12px;
 }
 
@@ -443,15 +449,24 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
 .upload-btn,
 .primary-btn {
   padding: 9px 13px;
-  color: #17130a;
-  background: linear-gradient(180deg, #f2d765, #cba33c);
-  border-color: rgba(240, 211, 91, 0.7);
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent-strong), var(--accent));
+  border-color: rgba(241, 217, 137, 0.74);
+  box-shadow: var(--shadow-accent);
 }
 
 .ghost-btn {
   padding: 9px 13px;
-  color: #e8e1d6;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.icon-btn:hover,
+.ghost-btn:hover,
+.primary-btn:hover,
+.upload-btn:hover {
+  border-color: var(--accent-line);
+  transform: translateY(-1px);
 }
 
 .primary-btn:disabled {
@@ -462,7 +477,7 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
 .file-name {
   min-width: 0;
   overflow: hidden;
-  color: #d6cec2;
+  color: var(--text-muted);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -475,8 +490,8 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #111213;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(7, 8, 10, 0.62);
+  border: 1px solid var(--line-soft);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -503,12 +518,12 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
 
 .ocr-box {
   position: absolute;
-  border: 2px solid rgba(240, 211, 91, 0.92);
-  background: rgba(240, 211, 91, 0.08);
+  border: 2px solid rgba(216, 183, 96, 0.92);
+  background: rgba(216, 183, 96, 0.08);
 }
 
 .preview-empty {
-  color: #8f887d;
+  color: var(--text-faint);
   font-size: 13px;
   font-weight: 800;
 }
@@ -529,7 +544,7 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
 
 .setting-field span,
 .field-row > span {
-  color: #a9a197;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 850;
 }
@@ -541,12 +556,20 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
   min-width: 0;
   height: 34px;
   padding: 0 9px;
-  color: #f5ede1;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.11);
+  color: var(--text-strong);
+  background: rgba(7, 8, 10, 0.46);
+  border: 1px solid var(--line-soft);
   border-radius: 9px;
   font: inherit;
   font-size: 12px;
+}
+
+.setting-field select:focus,
+.setting-field input:focus,
+.field-row input:focus {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring);
 }
 
 .setting-field:first-child {
@@ -561,7 +584,7 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
 }
 
 .recognition-summary {
-  color: #d6cec2;
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 750;
 }
@@ -574,15 +597,15 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
 }
 
 .ocr-error {
-  color: #ffd1c9;
-  border-color: rgba(255, 99, 71, 0.38);
-  background: rgba(255, 99, 71, 0.1);
+  color: #ffd2ca;
+  border-color: rgba(255, 134, 111, 0.38);
+  background: rgba(255, 134, 111, 0.1);
 }
 
 .ocr-warnings {
-  color: #fff0b8;
-  border-color: rgba(240, 211, 91, 0.32);
-  background: rgba(240, 211, 91, 0.1);
+  color: #ffe8b4;
+  border-color: rgba(216, 183, 96, 0.34);
+  background: rgba(216, 183, 96, 0.1);
 }
 
 .field-table {
@@ -596,7 +619,7 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--line-faint);
 }
 
 .field-row:last-child {
@@ -607,7 +630,7 @@ function overlayBoxStyle(item: RecognizedPriceTag['rawItems'][number]) {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #242526;
+  background: rgba(27, 30, 36, 0.98);
 }
 
 @media (max-width: 860px) {

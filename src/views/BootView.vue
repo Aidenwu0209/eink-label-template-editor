@@ -67,9 +67,12 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 50%, #16213e 100%);
-  color: #e0e0e0;
-  font-family: 'Inter', system-ui, sans-serif;
+  background:
+    radial-gradient(circle at 20% 16%, rgba(216, 183, 96, 0.12), transparent 32%),
+    radial-gradient(circle at 78% 20%, rgba(141, 188, 246, 0.08), transparent 30%),
+    linear-gradient(135deg, var(--app-bg) 0%, #11151c 52%, var(--app-bg-deep) 100%);
+  color: var(--text-main);
+  font-family: var(--app-font-family);
 }
 
 .boot-container {
@@ -82,21 +85,21 @@ onMounted(async () => {
   font-size: 28px;
   font-weight: 700;
   margin-bottom: 8px;
-  background: linear-gradient(90deg, #64b5f6, #ce93d8);
+  background: linear-gradient(90deg, var(--text-strong), var(--accent-strong));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .boot-subtitle {
   font-size: 14px;
-  color: #888;
+  color: var(--text-muted);
   margin-bottom: 32px;
 }
 
 .progress-track {
   width: 100%;
   height: 4px;
-  background: #2a2a2a;
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
   overflow: hidden;
   margin-bottom: 16px;
@@ -104,43 +107,43 @@ onMounted(async () => {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #64b5f6, #ce93d8);
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
   border-radius: 2px;
   transition: width 0.3s ease;
 }
 
 .progress-fill.error {
-  background: #ef5350;
+  background: var(--danger);
 }
 
 .boot-phase {
   font-size: 13px;
-  color: #aaa;
+  color: var(--text-muted);
 }
 
 .boot-error {
   margin-top: 24px;
   padding: 16px;
-  background: rgba(239, 83, 80, 0.1);
-  border: 1px solid rgba(239, 83, 80, 0.3);
+  background: rgba(255, 134, 111, 0.1);
+  border: 1px solid rgba(255, 134, 111, 0.3);
   border-radius: 8px;
 }
 
 .error-title {
-  color: #ef5350;
+  color: var(--danger);
   font-weight: 600;
   margin-bottom: 4px;
 }
 
 .error-message {
   font-size: 13px;
-  color: #ccc;
+  color: var(--text-main);
   margin-bottom: 12px;
 }
 
 .retry-btn {
   padding: 8px 24px;
-  background: #ef5350;
+  background: var(--danger);
   color: white;
   border: none;
   border-radius: 4px;
@@ -149,6 +152,6 @@ onMounted(async () => {
 }
 
 .retry-btn:hover {
-  background: #e53935;
+  filter: brightness(1.08);
 }
 </style>

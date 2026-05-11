@@ -28,10 +28,11 @@ defineExpose({
 
 <style scoped>
 .fabric-canvas-wrapper {
-  border: 1px solid #2a2a2a;
+  border: 1px solid var(--line-soft);
   border-radius: 4px;
   overflow: hidden;
-  background: #1a1a1a;
+  background: #111316;
   display: inline-block;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
 }
 </style>

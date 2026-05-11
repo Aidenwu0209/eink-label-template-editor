@@ -380,7 +380,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
 }
 
 .toolbox-intro span {
-  color: #f4ecd9;
+  color: var(--text-strong);
   font-size: 15px;
   font-weight: 900;
 }
@@ -389,7 +389,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
 .toolbar-section-title small,
 .tool-card-copy small,
 .template-hint {
-  color: #9c9488;
+  color: var(--text-muted);
   font-size: 11px;
   line-height: 1.45;
 }
@@ -399,29 +399,31 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   padding: 6px;
-  background: rgba(0, 0, 0, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(7, 8, 10, 0.36);
+  border: 1px solid var(--line-faint);
   border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .asset-tabs button {
   min-width: 0;
   min-height: 34px;
   padding: 6px 5px;
-  color: #aaa297;
+  color: var(--text-muted);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 10px;
   font-size: 11px;
   font-weight: 850;
   cursor: pointer;
+  transition: color 0.16s, background 0.16s, border-color 0.16s;
 }
 
 .asset-tabs button.active,
 .asset-tabs button:hover {
-  color: #fff2ba;
-  border-color: rgba(240, 211, 91, 0.44);
-  background: rgba(240, 211, 91, 0.14);
+  color: var(--accent-strong);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
 }
 
 .toolbar-section {
@@ -435,7 +437,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  color: #d8d0c3;
+  color: var(--text-main);
   font-size: 12px;
   font-weight: 850;
 }
@@ -454,11 +456,13 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   align-items: center;
   gap: 7px;
   padding: 7px;
-  color: #eee5d7;
-  background: rgba(240, 211, 91, 0.1);
-  border: 1px solid rgba(240, 211, 91, 0.22);
+  color: var(--text-main);
+  background: rgba(216, 183, 96, 0.11);
+  border: 1px solid rgba(216, 183, 96, 0.24);
   border-radius: 12px;
   cursor: grab;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  transition: transform 0.15s, color 0.15s, border-color 0.15s, background 0.15s;
 }
 
 .recent-tool span,
@@ -467,8 +471,8 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  color: #17130a;
-  background: #f0d35b;
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent-strong), var(--accent));
   font-size: 11px;
   font-weight: 950;
 }
@@ -499,7 +503,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
 
 .subsection-label {
   margin-top: 2px;
-  color: #8f887d;
+  color: var(--text-faint);
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -514,13 +518,13 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   align-items: center;
   gap: 10px;
   padding: 10px;
-  color: #ddd5ca;
+  color: var(--text-main);
   background:
-    radial-gradient(circle at 12% 10%, rgba(240, 211, 91, 0.18), transparent 34%),
-    linear-gradient(180deg, rgba(62, 63, 63, 0.96), rgba(34, 35, 36, 0.96));
-  border: 1px solid rgba(255, 255, 255, 0.09);
+    radial-gradient(circle at 12% 10%, rgba(216, 183, 96, 0.15), transparent 34%),
+    linear-gradient(180deg, rgba(43, 46, 53, 0.94), rgba(22, 24, 29, 0.96));
+  border: 1px solid var(--line-soft);
   border-radius: 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--shadow-panel), inset 0 1px 0 rgba(255, 255, 255, 0.055);
   cursor: grab;
   text-align: left;
   transition: transform 0.15s, border-color 0.15s, background 0.15s, color 0.15s;
@@ -533,8 +537,8 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
 .tool-card:hover,
 .recent-tool:hover {
   transform: translateY(-1px);
-  color: #fff7df;
-  border-color: rgba(240, 211, 91, 0.42);
+  color: var(--text-strong);
+  border-color: var(--accent-line);
 }
 
 .tool-card:active,
@@ -556,7 +560,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
 }
 
 .tool-card-title {
-  color: #f3eadc;
+  color: var(--text-strong);
   font-size: 14px;
   font-weight: 900;
 }
@@ -570,8 +574,8 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 3px 6px;
-  color: #17130a;
-  background: #d0b44b;
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent-strong), var(--accent));
   border-radius: 999px;
   font-size: 9px;
   font-weight: 900;
@@ -583,23 +587,23 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
 
 .snippet-card {
   background:
-    radial-gradient(circle at 12% 10%, rgba(78, 172, 255, 0.16), transparent 34%),
-    linear-gradient(180deg, rgba(58, 64, 67, 0.96), rgba(33, 35, 37, 0.96));
+    radial-gradient(circle at 12% 10%, rgba(141, 188, 246, 0.15), transparent 34%),
+    linear-gradient(180deg, rgba(39, 47, 58, 0.94), rgba(21, 24, 30, 0.96));
 }
 
 .snippet-mark {
-  background: #8cc7ff;
+  background: linear-gradient(180deg, #b9d8ff, var(--blue-accent));
 }
 
 .template-mark {
-  background: #efd754;
+  background: linear-gradient(180deg, var(--accent-strong), var(--accent));
 }
 
 .template-hint {
   margin: 0;
   padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(7, 8, 10, 0.34);
+  border: 1px solid var(--line-faint);
   border-radius: 10px;
 }
 </style>

@@ -1370,17 +1370,19 @@ function handleStaticImageFileChange(event: Event) {
   padding: 12px 12px 10px;
   font-size: 15px;
   font-weight: 800;
-  color: #f0e9de;
+  color: var(--text-strong);
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(52, 53, 53, 0.98), rgba(39, 40, 41, 0.98));
+  border-bottom: 1px solid var(--line-faint);
+  background:
+    radial-gradient(circle at 14% 0%, rgba(216, 183, 96, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(34, 37, 44, 0.98), rgba(23, 25, 30, 0.98));
 }
 
 .panel-type-badge {
   flex: 0 0 auto;
   padding: 4px 7px;
-  color: #17130a;
-  background: #d0b44b;
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent-strong), var(--accent));
   border-radius: 999px;
   font-size: 10px;
   font-weight: 900;
@@ -1397,10 +1399,10 @@ function handleStaticImageFileChange(event: Event) {
   gap: 8px;
   padding: 20px 14px;
   text-align: center;
-  color: #9b9489;
-  border: 1px dashed rgba(255, 255, 255, 0.13);
+  color: var(--text-muted);
+  border: 1px dashed var(--line-strong);
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(7, 8, 10, 0.28);
 }
 
 .empty-state-mark {
@@ -1410,14 +1412,14 @@ function handleStaticImageFileChange(event: Event) {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: rgba(240, 211, 91, 0.14);
-  color: #f0d35b;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
   font-size: 24px;
   line-height: 1;
 }
 
 .empty-state-title {
-  color: #e8dfd2;
+  color: var(--text-strong);
   font-size: 13px;
   font-weight: 750;
 }
@@ -1433,8 +1435,8 @@ function handleStaticImageFileChange(event: Event) {
   padding: 10px 0 0;
   font-size: 12px;
   font-weight: 800;
-  color: #d8d0c3;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  border-top: 1px solid var(--line-faint);
 }
 
 .quick-preset-row {
@@ -1446,18 +1448,20 @@ function handleStaticImageFileChange(event: Event) {
 
 .quick-preset-row button {
   min-height: 30px;
-  color: #ddd5ca;
-  background: rgba(240, 211, 91, 0.1);
-  border: 1px solid rgba(240, 211, 91, 0.25);
+  color: var(--text-main);
+  background: rgba(216, 183, 96, 0.1);
+  border: 1px solid rgba(216, 183, 96, 0.25);
   border-radius: 8px;
   font-size: 11px;
   font-weight: 750;
   cursor: pointer;
+  transition: color 0.16s, background 0.16s, border-color 0.16s;
 }
 
 .quick-preset-row button:hover {
-  color: #fff2ba;
-  border-color: rgba(240, 211, 91, 0.5);
+  color: var(--accent-strong);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
 }
 
 .prop-group {
@@ -1475,7 +1479,7 @@ function handleStaticImageFileChange(event: Event) {
 
 .prop-label {
   font-size: 12px;
-  color: #a69f95;
+  color: var(--text-muted);
   font-weight: 750;
 }
 
@@ -1485,17 +1489,18 @@ function handleStaticImageFileChange(event: Event) {
   padding: 9px 10px;
   font-size: 13px;
   font-weight: 650;
-  background: rgba(14, 15, 15, 0.72);
-  color: #eee7dc;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(7, 8, 10, 0.48);
+  color: var(--text-strong);
+  border: 1px solid var(--line-soft);
   border-radius: 8px;
   box-sizing: border-box;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .prop-input:focus {
   outline: none;
-  border-color: rgba(240, 211, 91, 0.62);
-  box-shadow: 0 0 0 3px rgba(240, 211, 91, 0.1);
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring), inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .prop-input:disabled {
@@ -1515,14 +1520,14 @@ function handleStaticImageFileChange(event: Event) {
   align-items: center;
   gap: 10px;
   padding: 9px 10px;
-  color: #ece4d8;
-  background: rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  background: rgba(7, 8, 10, 0.34);
+  border: 1px solid var(--line-faint);
   border-radius: 10px;
 }
 
 .info-row span {
-  color: #a69f95;
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 750;
 }
@@ -1538,7 +1543,7 @@ function handleStaticImageFileChange(event: Event) {
 
 .prop-hint {
   font-size: 11px;
-  color: #9f988f;
+  color: var(--text-muted);
   line-height: 1.45;
 }
 
@@ -1553,21 +1558,21 @@ function handleStaticImageFileChange(event: Event) {
 }
 
 .prop-error {
-  color: #ffb4a8;
-  background: rgba(255, 99, 71, 0.14);
-  border: 1px solid rgba(255, 99, 71, 0.35);
+  color: #ffd2ca;
+  background: rgba(255, 134, 111, 0.13);
+  border: 1px solid rgba(255, 134, 111, 0.35);
 }
 
 .prop-warning {
-  color: #ffe1a3;
-  background: rgba(232, 184, 17, 0.14);
-  border: 1px solid rgba(232, 184, 17, 0.35);
+  color: #ffe4ad;
+  background: rgba(240, 196, 107, 0.13);
+  border: 1px solid rgba(240, 196, 107, 0.34);
 }
 
 .prop-note {
-  color: #bdb4a8;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--line-faint);
 }
 
 .properties-panel :deep(.palette-picker) {

@@ -115,11 +115,12 @@ onUnmounted(() => {
 <style scoped>
 .preview-canvas-wrapper {
   position: relative;
-  border: 1px solid #2a2a2a;
+  border: 1px solid var(--line-soft);
   border-radius: 4px;
   overflow: hidden;
-  background: #1a1a1a;
+  background: #111316;
   display: inline-block;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
 }
 
 .preview-header {
@@ -127,19 +128,19 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  background: #242424;
-  border-bottom: 1px solid #333;
+  background: linear-gradient(180deg, rgba(35, 38, 44, 0.96), rgba(21, 23, 27, 0.98));
+  border-bottom: 1px solid var(--line-faint);
 }
 
 .preview-title {
   font-size: 12px;
-  color: #aaa;
+  color: var(--text-muted);
   font-weight: 500;
 }
 
 .preview-badge {
   font-size: 11px;
-  color: #f0a030;
+  color: var(--accent-strong);
   animation: pulse 1s infinite;
 }
 
@@ -150,7 +151,8 @@ onUnmounted(() => {
   z-index: 1;
   padding: 2px 5px;
   border-radius: 999px;
-  background: rgba(26, 26, 26, 0.76);
+  background: rgba(7, 8, 10, 0.76);
+  border: 1px solid var(--line-faint);
 }
 
 .preview-canvas {
