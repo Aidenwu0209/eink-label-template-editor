@@ -36,7 +36,9 @@ export class EinkColorPlugin extends BasePlugin {
   }
 
   snapColorToPalette(hex: string): string {
+    if (isTransparentPaint(hex)) return hex;
     const rgb = hexToRgb(hex);
+    if (rgb.some((channel) => Number.isNaN(channel))) return hex;
     const { entry } = findNearestColor(rgb[0], rgb[1], rgb[2], this.profile.palette);
     return entry.hex;
   }
@@ -79,4 +81,11 @@ export class EinkColorPlugin extends BasePlugin {
       if (obj.objects) this.constrainJsonColors(obj.objects);
     });
   }
+}
+
+function isTransparentPaint(value: string): boolean {
+  const normalized = value.replace(/\s+/g, '').toLowerCase();
+  if (normalized === 'transparent') return true;
+  const rgbaMatch = normalized.match(/^rgba\([^,]+,[^,]+,[^,]+,([^)]+)\)$/);
+  return rgbaMatch ? Number(rgbaMatch[1]) === 0 : false;
 }

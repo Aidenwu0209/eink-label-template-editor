@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { StarterTemplateKind, ToolKind } from '@/stores/editorStore';
+import type { SnippetKind, StarterTemplateKind, ToolKind } from '@/stores/editorStore';
 
-type AssetTab = 'my' | 'public' | 'templates';
+type AssetTab = 'my' | 'common' | 'templates';
 
 type ToolCard = {
   kind: ToolKind;
-  tab: Exclude<AssetTab, 'templates'>;
+  group: 'data' | 'base';
+  mark: string;
+  title: string;
+  description: string;
+  badge?: string;
+};
+
+type SnippetCard = {
+  kind: SnippetKind;
   mark: string;
   title: string;
   description: string;
@@ -28,7 +36,9 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'add-tool': [kind: ToolKind];
+  'add-snippet': [kind: SnippetKind];
   'tool-drag-start': [kind: ToolKind, event: DragEvent];
+  'snippet-drag-start': [kind: SnippetKind, event: DragEvent];
   'apply-starter-template': [kind: StarterTemplateKind];
 }>();
 
@@ -37,7 +47,7 @@ const activeAssetTab = ref<AssetTab>('my');
 const toolCards: ToolCard[] = [
   {
     kind: 'PRICE',
-    tab: 'my',
+    group: 'data',
     mark: '¥',
     title: '价格',
     description: '金额展示，支持货币符号和小数样式。',
@@ -45,7 +55,7 @@ const toolCards: ToolCard[] = [
   },
   {
     kind: 'DISCOUNT',
-    tab: 'my',
+    group: 'data',
     mark: '%',
     title: '折扣',
     description: '促销折扣块，默认居中展示。',
@@ -53,7 +63,7 @@ const toolCards: ToolCard[] = [
   },
   {
     kind: 'IMAGE_DYNAMIC',
-    tab: 'my',
+    group: 'data',
     mark: 'D',
     title: '图片字段',
     description: '绑定图片地址，随数据动态替换。',
@@ -61,7 +71,7 @@ const toolCards: ToolCard[] = [
   },
   {
     kind: 'QRCODE',
-    tab: 'my',
+    group: 'data',
     mark: 'QR',
     title: '二维码',
     description: '绑定二维码内容，适合详情页链接。',
@@ -69,7 +79,7 @@ const toolCards: ToolCard[] = [
   },
   {
     kind: 'BARCODE',
-    tab: 'my',
+    group: 'data',
     mark: 'BAR',
     title: '条形码',
     description: 'CODE128 条码，适合 SKU 或追踪码。',
@@ -77,31 +87,82 @@ const toolCards: ToolCard[] = [
   },
   {
     kind: 'RECT',
-    tab: 'public',
+    group: 'base',
     mark: '□',
     title: '矩形框',
     description: '绘制背景块、边框或分区容器。',
   },
   {
     kind: 'LINE',
-    tab: 'public',
+    group: 'base',
     mark: '/',
     title: '直线',
     description: '绘制分割线、引导线或下划线。',
   },
   {
     kind: 'TEXT',
-    tab: 'public',
+    group: 'base',
     mark: 'T',
     title: '文本',
     description: '固定文本，也可在属性中绑定字段。',
   },
   {
     kind: 'IMAGE_STATIC',
-    tab: 'public',
+    group: 'base',
     mark: 'IMG',
     title: '上传图片',
     description: '手动上传或填写图片 URL。',
+  },
+];
+
+const snippetCards: SnippetCard[] = [
+  {
+    kind: 'PRODUCT_TITLE',
+    mark: '标题',
+    title: '商品标题',
+    description: '绑定 productName，适合价签主标题。',
+    badge: 'productName',
+  },
+  {
+    kind: 'SPEC_TEXT',
+    mark: '规',
+    title: '规格说明',
+    description: '绑定 spec 或 description，作为副标题信息。',
+    badge: 'spec',
+  },
+  {
+    kind: 'PROMO_TEXT',
+    mark: '促',
+    title: '促销文案',
+    description: '绑定 promoText/description，放置活动说明。',
+    badge: 'promoText',
+  },
+  {
+    kind: 'MEMBER_PRICE',
+    mark: '会',
+    title: '会员价',
+    description: '绑定 memberPrice，生成可编辑价格组件。',
+    badge: 'memberPrice',
+  },
+  {
+    kind: 'ORIGINAL_PRICE',
+    mark: '原',
+    title: '原价',
+    description: '绑定 originalPrice，适合作为对比价。',
+    badge: 'originalPrice',
+  },
+  {
+    kind: 'DISCOUNT_BADGE',
+    mark: '折',
+    title: '折扣标签',
+    description: '绑定 discount，按屏幕色板自动选择配色。',
+    badge: 'discount',
+  },
+  {
+    kind: 'DIVIDER_LINE',
+    mark: '线',
+    title: '价签分隔线',
+    description: '常用横向分隔线，用来组织信息层级。',
   },
 ];
 
@@ -128,10 +189,8 @@ const templateCards: TemplateCard[] = [
 
 const toolByKind = computed(() => new Map(toolCards.map((tool) => [tool.kind, tool])));
 
-const currentTools = computed(() => {
-  if (activeAssetTab.value === 'templates') return [];
-  return toolCards.filter((tool) => tool.tab === activeAssetTab.value);
-});
+const dataToolCards = computed(() => toolCards.filter((tool) => tool.group === 'data'));
+const baseToolCards = computed(() => toolCards.filter((tool) => tool.group === 'base'));
 
 const recentToolCards = computed(() => {
   return props.recentTools
@@ -144,8 +203,16 @@ function addTool(kind: ToolKind): void {
   emit('add-tool', kind);
 }
 
+function addSnippet(kind: SnippetKind): void {
+  emit('add-snippet', kind);
+}
+
 function dragTool(kind: ToolKind, event: DragEvent): void {
   emit('tool-drag-start', kind, event);
+}
+
+function dragSnippet(kind: SnippetKind, event: DragEvent): void {
+  emit('snippet-drag-start', kind, event);
 }
 </script>
 
@@ -165,11 +232,11 @@ function dragTool(kind: ToolKind, event: DragEvent): void {
         我的元素
       </button>
       <button
-        :class="{ active: activeAssetTab === 'public' }"
+        :class="{ active: activeAssetTab === 'common' }"
         type="button"
-        @click="activeAssetTab = 'public'"
+        @click="activeAssetTab = 'common'"
       >
-        公共元素
+        常用片段
       </button>
       <button
         :class="{ active: activeAssetTab === 'templates' }"
@@ -205,28 +272,71 @@ function dragTool(kind: ToolKind, event: DragEvent): void {
     <section class="toolbar-section">
       <div class="toolbar-section-title">
         <span>
-          {{ activeAssetTab === 'my' ? '数据绑定组件' : activeAssetTab === 'public' ? '基础绘制组件' : '一键套用版式' }}
+          {{ activeAssetTab === 'my' ? '我的元素' : activeAssetTab === 'common' ? '价签常用片段' : '一键套用版式' }}
         </span>
         <small>{{ activeAssetTab === 'templates' ? '点击即替换当前画布' : '支持点击和拖放' }}</small>
       </div>
 
-      <div v-if="activeAssetTab !== 'templates'" class="tool-card-list">
+      <template v-if="activeAssetTab === 'my'">
+        <div class="subsection-label">数据组件</div>
+        <div class="tool-card-list">
+          <button
+            v-for="tool in dataToolCards"
+            :key="tool.kind"
+            class="tool-card"
+            type="button"
+            draggable="true"
+            :title="`添加${tool.title}`"
+            @click="addTool(tool.kind)"
+            @dragstart="dragTool(tool.kind, $event)"
+          >
+            <span class="tool-mark">{{ tool.mark }}</span>
+            <span class="tool-card-copy">
+              <span class="tool-card-title">{{ tool.title }}</span>
+              <small>{{ tool.description }}</small>
+            </span>
+            <span v-if="tool.badge" class="tool-badge">{{ tool.badge }}</span>
+          </button>
+        </div>
+
+        <div class="subsection-label">基础绘制</div>
+        <div class="tool-card-list compact-list">
+          <button
+            v-for="tool in baseToolCards"
+            :key="tool.kind"
+            class="tool-card compact-card"
+            type="button"
+            draggable="true"
+            :title="`添加${tool.title}`"
+            @click="addTool(tool.kind)"
+            @dragstart="dragTool(tool.kind, $event)"
+          >
+            <span class="tool-mark">{{ tool.mark }}</span>
+            <span class="tool-card-copy">
+              <span class="tool-card-title">{{ tool.title }}</span>
+              <small>{{ tool.description }}</small>
+            </span>
+          </button>
+        </div>
+      </template>
+
+      <div v-else-if="activeAssetTab === 'common'" class="tool-card-list">
         <button
-          v-for="tool in currentTools"
-          :key="tool.kind"
-          class="tool-card"
+          v-for="snippet in snippetCards"
+          :key="snippet.kind"
+          class="tool-card snippet-card"
           type="button"
           draggable="true"
-          :title="`添加${tool.title}`"
-          @click="addTool(tool.kind)"
-          @dragstart="dragTool(tool.kind, $event)"
+          :title="`添加${snippet.title}`"
+          @click="addSnippet(snippet.kind)"
+          @dragstart="dragSnippet(snippet.kind, $event)"
         >
-          <span class="tool-mark">{{ tool.mark }}</span>
+          <span class="tool-mark snippet-mark">{{ snippet.mark }}</span>
           <span class="tool-card-copy">
-            <span class="tool-card-title">{{ tool.title }}</span>
-            <small>{{ tool.description }}</small>
+            <span class="tool-card-title">{{ snippet.title }}</span>
+            <small>{{ snippet.description }}</small>
           </span>
-          <span v-if="tool.badge" class="tool-badge">{{ tool.badge }}</span>
+          <span v-if="snippet.badge" class="tool-badge">{{ snippet.badge }}</span>
         </button>
       </div>
 
@@ -245,7 +355,7 @@ function dragTool(kind: ToolKind, event: DragEvent): void {
             <small>{{ template.description }}</small>
           </span>
         </button>
-        <p class="template-hint">套用固定模板会先清空当前画布。</p>
+        <p class="template-hint">模板会按当前屏幕色板自动避开大面积黑块；套用前会清空当前画布。</p>
       </div>
     </section>
   </div>
@@ -383,6 +493,18 @@ function dragTool(kind: ToolKind, event: DragEvent): void {
   gap: 8px;
 }
 
+.compact-list {
+  gap: 6px;
+}
+
+.subsection-label {
+  margin-top: 2px;
+  color: #8f887d;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
 .tool-card {
   position: relative;
   min-width: 0;
@@ -402,6 +524,10 @@ function dragTool(kind: ToolKind, event: DragEvent): void {
   cursor: grab;
   text-align: left;
   transition: transform 0.15s, border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.compact-card {
+  min-height: 58px;
 }
 
 .tool-card:hover,
@@ -453,6 +579,16 @@ function dragTool(kind: ToolKind, event: DragEvent): void {
 
 .template-card {
   cursor: pointer;
+}
+
+.snippet-card {
+  background:
+    radial-gradient(circle at 12% 10%, rgba(78, 172, 255, 0.16), transparent 34%),
+    linear-gradient(180deg, rgba(58, 64, 67, 0.96), rgba(33, 35, 37, 0.96));
+}
+
+.snippet-mark {
+  background: #8cc7ff;
 }
 
 .template-mark {

@@ -70,7 +70,7 @@ export function createPriceVisual(
       top: 0,
       width: bounds.width,
       height: bounds.height,
-      fill: 'rgba(255,255,255,0)',
+      fill: 'transparent',
       strokeWidth: 0,
       selectable: false,
       evented: false,

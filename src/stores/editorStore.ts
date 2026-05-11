@@ -198,6 +198,14 @@ export type ToolKind =
   | 'IMAGE_DYNAMIC'
   | 'QRCODE'
   | 'BARCODE';
+export type SnippetKind =
+  | 'PRODUCT_TITLE'
+  | 'SPEC_TEXT'
+  | 'PROMO_TEXT'
+  | 'ORIGINAL_PRICE'
+  | 'MEMBER_PRICE'
+  | 'DISCOUNT_BADGE'
+  | 'DIVIDER_LINE';
 
 export interface ToolPosition {
   left: number;
@@ -591,10 +599,21 @@ export const useEditorStore = defineStore('editor', () => {
     });
   }
 
-  function getPaletteAccentColors(config: BootConfig): { accent: string; onAccent: string } {
+  function getPaletteAccentColors(config: BootConfig): { accent: string; onAccent: string; hasChromaticAccent: boolean } {
     const red = getNamedPaletteColor(config, 'Red');
-    if (red) return { accent: red, onAccent: '#FFFFFF' };
-    return { accent: '#000000', onAccent: '#FFFFFF' };
+    if (red) return { accent: red, onAccent: '#FFFFFF', hasChromaticAccent: true };
+    const yellow = getNamedPaletteColor(config, 'Yellow');
+    if (yellow) return { accent: yellow, onAccent: '#000000', hasChromaticAccent: true };
+    return { accent: '#000000', onAccent: '#FFFFFF', hasChromaticAccent: false };
+  }
+
+  function getDiscountDefaultColors(config: BootConfig): { backgroundColor: string; textColor: string } {
+    const { accent, onAccent, hasChromaticAccent } = getPaletteAccentColors(config);
+    if (hasChromaticAccent) {
+      return { backgroundColor: accent, textColor: onAccent };
+    }
+
+    return { backgroundColor: '#FFFFFF', textColor: '#000000' };
   }
 
   function getObjectLayerLabel(obj: fabric.Object, index: number): string {
@@ -1217,12 +1236,12 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function createStarterDiscountObject(config: BootConfig, bounds: VisualBounds): fabric.Group {
-    const { accent, onAccent } = getPaletteAccentColors(config);
+    const { backgroundColor, textColor } = getDiscountDefaultColors(config);
     const ext = {
       fieldBinding: 'discount',
       formatTemplate: '{value}折',
-      backgroundColor: accent,
-      textColor: onAccent,
+      backgroundColor,
+      textColor,
       fontSize: scaledPresetValue(config, 23),
       fontWeight: 'bold' as const,
       textAlign: 'center' as const,
@@ -1347,13 +1366,13 @@ export const useEditorStore = defineStore('editor', () => {
 
     const config = core.bootConfig;
     const bounds = getToolBounds(core, 'DISCOUNT', position);
-    const { accent, onAccent } = getPaletteAccentColors(config);
+    const { backgroundColor, textColor } = getDiscountDefaultColors(config);
 
     const ext = {
       fieldBinding: 'discount',
       formatTemplate: '{value}折',
-      backgroundColor: accent,
-      textColor: onAccent,
+      backgroundColor,
+      textColor,
       fontSize: Math.max(10, Math.min(bounds.height - 6, scaledPresetValue(config, 17))),
       fontWeight: 'bold' as const,
       textAlign: 'center' as const,
@@ -1470,6 +1489,72 @@ export const useEditorStore = defineStore('editor', () => {
     } satisfies BarcodeExtension;
 
     addVisualObject(createBarcodeVisual(bounds, config.previewData?.barcodeContent, ext));
+  }
+
+  function getSnippetBounds(core: EditorCore, kind: SnippetKind, position?: ToolPosition): VisualBounds {
+    const config = core.bootConfig;
+    const presets: Record<SnippetKind, VisualBounds> = {
+      PRODUCT_TITLE: scaledStarterBounds(config, { left: 10, top: 10, width: 176, height: 22 }),
+      SPEC_TEXT: scaledStarterBounds(config, { left: 10, top: 34, width: 154, height: 16 }),
+      PROMO_TEXT: scaledStarterBounds(config, { left: 10, top: 92, width: 184, height: 18 }),
+      ORIGINAL_PRICE: scaledStarterBounds(config, { left: 152, top: 73, width: 76, height: 18 }),
+      MEMBER_PRICE: scaledStarterBounds(config, { left: 10, top: 48, width: 142, height: 46 }),
+      DISCOUNT_BADGE: scaledStarterBounds(config, { left: 154, top: 42, width: 78, height: 30 }),
+      DIVIDER_LINE: scaledStarterBounds(config, { left: 10, top: 86, width: 206, height: 1 }),
+    };
+    const base = presets[kind];
+    if (!position) return base;
+
+    return fitBoundsToCanvas(config, {
+      ...base,
+      left: position.left,
+      top: position.top,
+    });
+  }
+
+  async function addSnippet(kind: SnippetKind, position?: ToolPosition): Promise<void> {
+    const core = editor.value;
+    if (!core) return;
+
+    const config = core.bootConfig;
+    const bounds = getSnippetBounds(core, kind, position);
+
+    if (kind === 'PRODUCT_TITLE') {
+      addVisualObject(createStarterTextObject(config, bounds, {
+        fallback: '商品标题',
+        fieldBinding: 'productName',
+        fontSize: 15,
+        fontWeight: 'bold',
+      }));
+    } else if (kind === 'SPEC_TEXT') {
+      addVisualObject(createStarterTextObject(config, bounds, {
+        fallback: '规格 / 产地',
+        fieldBinding: config.previewData?.spec != null ? 'spec' : 'description',
+        fontSize: 9,
+        fontWeight: 'normal',
+      }));
+    } else if (kind === 'PROMO_TEXT') {
+      addVisualObject(createStarterTextObject(config, bounds, {
+        fallback: '限时优惠',
+        fieldBinding: config.previewData?.promoText != null ? 'promoText' : 'description',
+        fontSize: 10,
+        fontWeight: 'bold',
+      }));
+    } else if (kind === 'ORIGINAL_PRICE') {
+      addVisualObject(createStarterPriceObject(config, bounds, 'originalPrice', 'secondary'));
+    } else if (kind === 'MEMBER_PRICE') {
+      addVisualObject(createStarterPriceObject(config, bounds, 'memberPrice', 'main'));
+    } else if (kind === 'DISCOUNT_BADGE') {
+      addVisualObject(createStarterDiscountObject(config, bounds));
+    } else {
+      const y = bounds.top;
+      const line = new fabric.Line([bounds.left, y, bounds.left + bounds.width, y], {
+        stroke: '#000000',
+        strokeWidth: Math.max(1, bounds.height),
+      });
+      (line as any).extensionType = 'LINE';
+      addVisualObject(line);
+    }
   }
 
   async function addElement(kind: ToolKind, position?: ToolPosition): Promise<void> {
@@ -2206,6 +2291,7 @@ export const useEditorStore = defineStore('editor', () => {
     addQrcode,
     addBarcode,
     addElement,
+    addSnippet,
     applyStarterTemplate,
     applyRecognizedPriceTagTemplate,
     clearCanvasObjects,

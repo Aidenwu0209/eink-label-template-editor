@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useScreenStore } from '@/stores/screenStore';
-import { useEditorStore, type ToolKind } from '@/stores/editorStore';
+import { useEditorStore, type SnippetKind, type ToolKind } from '@/stores/editorStore';
 import FabricCanvas from '@/components/canvas/FabricCanvas.vue';
 import PreviewCanvas from '@/components/canvas/PreviewCanvas.vue';
 import EditorToolbar from '@/components/toolbar/EditorToolbar.vue';
@@ -22,6 +22,9 @@ type LocalTemplateRecord = {
 };
 
 type InspectorTab = 'properties' | 'layers' | 'palette';
+type DraggedLibraryItem =
+  | { type: 'tool'; kind: ToolKind }
+  | { type: 'snippet'; kind: SnippetKind };
 
 const LOCAL_TEMPLATE_STORAGE_KEY = 'eink-label-template-editor.localTemplates.v1';
 const TOOLBOX_WIDTH_STORAGE_KEY = 'eink-label-template-editor.toolboxWidth.v1';
@@ -102,6 +105,15 @@ const TOOL_LABELS: Record<ToolKind, { label: string; mark: string }> = {
   IMAGE_DYNAMIC: { label: '图片字段', mark: 'D' },
   QRCODE: { label: '二维码', mark: 'QR' },
   BARCODE: { label: '条形码', mark: 'BAR' },
+};
+const SNIPPET_LABELS: Record<SnippetKind, { label: string; mark: string }> = {
+  PRODUCT_TITLE: { label: '商品标题', mark: '标题' },
+  SPEC_TEXT: { label: '规格说明', mark: '规' },
+  PROMO_TEXT: { label: '促销文案', mark: '促' },
+  ORIGINAL_PRICE: { label: '原价', mark: '原' },
+  MEMBER_PRICE: { label: '会员价', mark: '会' },
+  DISCOUNT_BADGE: { label: '折扣标签', mark: '折' },
+  DIVIDER_LINE: { label: '价签分隔线', mark: '线' },
 };
 
 const selectedObjectType = computed(() => {
@@ -243,29 +255,49 @@ async function handleAddTool(kind: ToolKind): Promise<void> {
   isToolboxPeekOpen.value = false;
 }
 
-function handleToolDragStart(kind: ToolKind, event: DragEvent): void {
+async function handleAddSnippet(kind: SnippetKind): Promise<void> {
+  await editorStore.addSnippet(kind);
+  isToolboxPeekOpen.value = false;
+}
+
+function writeLibraryDragPayload(item: DraggedLibraryItem, event: DragEvent): void {
   if (!event.dataTransfer) return;
   event.dataTransfer.effectAllowed = 'copy';
-  event.dataTransfer.setData(TOOL_DRAG_MIME, JSON.stringify({ kind }));
-  event.dataTransfer.setData('text/plain', kind);
+  event.dataTransfer.setData(TOOL_DRAG_MIME, JSON.stringify(item));
+  event.dataTransfer.setData('text/plain', item.kind);
   (event.currentTarget as HTMLElement | null)?.addEventListener('dragend', () => {
     isToolDropTarget.value = false;
   }, { once: true });
 }
 
-function parseDraggedTool(event: DragEvent): ToolKind | null {
+function handleToolDragStart(kind: ToolKind, event: DragEvent): void {
+  writeLibraryDragPayload({ type: 'tool', kind }, event);
+}
+
+function handleSnippetDragStart(kind: SnippetKind, event: DragEvent): void {
+  writeLibraryDragPayload({ type: 'snippet', kind }, event);
+}
+
+function parseDraggedLibraryItem(event: DragEvent): DraggedLibraryItem | null {
   const raw = event.dataTransfer?.getData(TOOL_DRAG_MIME);
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
-      if (parsed?.kind in TOOL_LABELS) return parsed.kind;
+      if (parsed?.type === 'tool' && parsed?.kind in TOOL_LABELS) {
+        return { type: 'tool', kind: parsed.kind };
+      }
+      if (parsed?.type === 'snippet' && parsed?.kind in SNIPPET_LABELS) {
+        return { type: 'snippet', kind: parsed.kind };
+      }
     } catch {
       return null;
     }
   }
 
   const fallback = event.dataTransfer?.getData('text/plain');
-  return fallback && fallback in TOOL_LABELS ? fallback as ToolKind : null;
+  if (fallback && fallback in TOOL_LABELS) return { type: 'tool', kind: fallback as ToolKind };
+  if (fallback && fallback in SNIPPET_LABELS) return { type: 'snippet', kind: fallback as SnippetKind };
+  return null;
 }
 
 function hasToolDragPayload(event: DragEvent): boolean {
@@ -299,15 +331,20 @@ function handleStageDragLeave(event: DragEvent): void {
 }
 
 async function handleStageDrop(event: DragEvent): Promise<void> {
-  const kind = parseDraggedTool(event);
-  if (!kind) {
+  const item = parseDraggedLibraryItem(event);
+  if (!item) {
     isToolDropTarget.value = false;
     return;
   }
   event.preventDefault();
   isToolDropTarget.value = false;
-  await editorStore.addElement(kind, getCanvasDropPosition(event) ?? undefined);
-  rememberTool(kind);
+  const position = getCanvasDropPosition(event) ?? undefined;
+  if (item.type === 'tool') {
+    await editorStore.addElement(item.kind, position);
+    rememberTool(item.kind);
+  } else {
+    await editorStore.addSnippet(item.kind, position);
+  }
   isToolboxPeekOpen.value = false;
 }
 
@@ -664,7 +701,9 @@ onUnmounted(() => {
           <EditorToolbar
             :recent-tools="recentTools"
             @add-tool="handleAddTool"
+            @add-snippet="handleAddSnippet"
             @tool-drag-start="handleToolDragStart"
+            @snippet-drag-start="handleSnippetDragStart"
             @apply-starter-template="editorStore.applyStarterTemplate"
           />
         </div>
