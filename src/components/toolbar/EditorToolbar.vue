@@ -46,6 +46,7 @@ const emit = defineEmits<{
 <template>
   <div class="toolbar-actions">
     <div class="toolbar-group">
+      <span class="toolbar-group-label">创建</span>
       <button class="tool-btn" title="矩形" @click="emit('add-rect')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="2" y="3" width="12" height="10" stroke="currentColor" stroke-width="1.5" fill="none" />
@@ -122,6 +123,7 @@ const emit = defineEmits<{
     </div>
 
     <div class="toolbar-group">
+      <span class="toolbar-group-label">编辑</span>
       <button class="tool-btn compact" title="撤销 (Cmd/Ctrl+Z)" :disabled="!props.canUndo" @click="emit('undo')">撤</button>
       <button class="tool-btn compact" title="重做 (Shift+Cmd/Ctrl+Z 或 Cmd/Ctrl+Y)" :disabled="!props.canRedo" @click="emit('redo')">重</button>
       <button class="tool-btn compact" title="删除 (Delete/Backspace)" :disabled="!props.hasSelection" @click="emit('delete')">删</button>
@@ -139,6 +141,7 @@ const emit = defineEmits<{
     </div>
 
     <div class="toolbar-group">
+      <span class="toolbar-group-label">图层</span>
       <button class="tool-btn compact" title="上移一层" :disabled="!props.hasSelection" @click="emit('bring-forward')">上移</button>
       <button class="tool-btn compact" title="下移一层" :disabled="!props.hasSelection" @click="emit('send-backward')">下移</button>
       <button class="tool-btn compact" title="置顶" :disabled="!props.hasSelection" @click="emit('bring-front')">置顶</button>
@@ -146,6 +149,7 @@ const emit = defineEmits<{
     </div>
 
     <div class="toolbar-group">
+      <span class="toolbar-group-label">对齐</span>
       <button class="tool-btn compact" title="左对齐" :disabled="!props.hasSelection" @click="emit('align-left')">左</button>
       <button class="tool-btn compact" title="水平居中对齐" :disabled="!props.hasSelection" @click="emit('align-center')">水平中</button>
       <button class="tool-btn compact" title="右对齐" :disabled="!props.hasSelection" @click="emit('align-right')">右</button>
@@ -159,65 +163,93 @@ const emit = defineEmits<{
 <style scoped>
 .toolbar-actions {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 0 8px 12px;
 }
 
 .toolbar-group {
-  display: flex;
-  gap: 4px;
-  padding-right: 8px;
-  border-right: 1px solid #333;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 0 10px;
+  border-right: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
 }
 
 .toolbar-group:last-child {
-  border-right: none;
-  padding-right: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.toolbar-group-label {
+  grid-column: 1 / -1;
+  color: #8f887d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .tool-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  font-size: 12px;
-  background: #2a2a2a;
-  color: #ccc;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
+  justify-content: center;
+  gap: 5px;
+  min-height: 50px;
+  padding: 7px 5px;
+  font-size: 11px;
+  font-weight: 650;
+  background: linear-gradient(180deg, rgba(65, 66, 66, 0.96), rgba(39, 40, 41, 0.96));
+  color: #ddd5ca;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s, color 0.15s;
   white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.tool-btn svg {
+  width: 18px;
+  height: 18px;
 }
 
 .tool-btn:hover {
-  background: #3a3a3a;
-  color: #fff;
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, rgba(83, 84, 83, 0.96), rgba(47, 48, 48, 0.96));
+  border-color: rgba(240, 211, 91, 0.32);
+  color: #fff7df;
 }
 
 .tool-btn.compact {
   justify-content: center;
-  min-width: 28px;
-  padding: 4px 8px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 4px;
+  font-size: 11px;
 }
 
 .tool-btn.active {
-  background: #34424d;
-  border-color: #567184;
-  color: #fff;
+  background: rgba(240, 211, 91, 0.15);
+  border-color: rgba(240, 211, 91, 0.56);
+  color: #fff2ba;
 }
 
 .tool-btn:disabled {
-  opacity: 0.38;
+  opacity: 0.34;
   cursor: not-allowed;
 }
 
 .tool-btn:disabled:hover {
-  background: #2a2a2a;
-  color: #ccc;
+  transform: none;
+  background: linear-gradient(180deg, rgba(65, 66, 66, 0.96), rgba(39, 40, 41, 0.96));
+  border-color: rgba(255, 255, 255, 0.09);
+  color: #ddd5ca;
 }
 </style>

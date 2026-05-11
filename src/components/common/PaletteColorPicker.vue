@@ -37,34 +37,38 @@ function selectColor(hex: string) {
 .palette-picker {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .picker-label {
   font-size: 11px;
-  color: #888;
+  color: #a69f95;
+  font-weight: 650;
 }
 
 .color-swatches {
   display: flex;
-  gap: 4px;
+  gap: 7px;
   flex-wrap: wrap;
 }
 
 .swatch {
-  width: 24px;
-  height: 24px;
-  border: 2px solid transparent;
-  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
 
 .swatch:hover {
-  border-color: #666;
+  transform: translateY(-1px);
+  border-color: rgba(240, 211, 91, 0.58);
 }
 
 .swatch.active {
-  border-color: #4fc3f7;
+  border-color: #f0d35b;
+  box-shadow: 0 0 0 3px rgba(240, 211, 91, 0.16), inset 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
 </style>

@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+:root {
+  --app-font-family: ui-sans-serif, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -8,9 +10,9 @@
 
 html, body {
   height: 100%;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: #111;
-  color: #e0e0e0;
+  font-family: var(--app-font-family);
+  background: #111315;
+  color: #ece7df;
   overflow: hidden;
 }
 
@@ -24,14 +26,14 @@ html, body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: rgba(0, 0, 0, 0.18);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: rgba(240, 211, 91, 0.28);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: rgba(240, 211, 91, 0.42);
 }

@@ -39,6 +39,13 @@ const isDiscount = computed(() => objectType.value === 'DISCOUNT');
 const isImage = computed(() => objectType.value === 'IMAGE');
 const isQrcode = computed(() => objectType.value === 'QRCODE');
 const isBarcode = computed(() => objectType.value === 'BARCODE');
+const hasSupportedSelection = computed(() => {
+  return Boolean(
+    props.selectedObject
+    && (isRect.value || isLine.value || isText.value || isPrice.value || isDiscount.value || isImage.value || isQrcode.value || isBarcode.value)
+  );
+});
+const panelTitle = computed(() => hasSupportedSelection.value ? `${objectType.value} 属性` : '属性');
 
 // RECT properties
 const rectX = computed(() => props.selectedObject?.left ?? 0);
@@ -186,8 +193,16 @@ function handleStaticImageFileChange(event: Event) {
 </script>
 
 <template>
-  <aside v-if="selectedObject && (isRect || isLine || isText || isPrice || isDiscount || isImage || isQrcode || isBarcode)" class="properties-panel">
-    <div class="panel-title">{{ objectType }} 属性</div>
+  <aside class="properties-panel">
+    <div class="panel-title">{{ panelTitle }}</div>
+
+    <div v-if="!hasSupportedSelection" class="empty-state">
+      <div class="empty-state-mark">+</div>
+      <div class="empty-state-title">未选择对象</div>
+      <p>从左侧工具箱添加元素，或点击画布上的元素后在这里调整属性。</p>
+    </div>
+
+    <template v-else>
 
     <!-- RECT properties -->
     <template v-if="isRect">
@@ -920,36 +935,78 @@ function handleStaticImageFileChange(event: Event) {
         @update:model-value="updateProp('ext.backgroundColor', $event)"
       />
     </template>
+    </template>
   </aside>
 </template>
 
 <style scoped>
 .properties-panel {
-  width: 200px;
-  background: #1a1a1a;
-  border-left: 1px solid #2a2a2a;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(56, 57, 57, 0.94), rgba(33, 34, 35, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.16);
 }
 
 .panel-title {
   font-size: 13px;
-  font-weight: 600;
-  color: #e0e0e0;
+  font-weight: 800;
+  color: #f0e9de;
   padding-bottom: 8px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.empty-state {
+  display: flex;
+  min-height: 190px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 14px;
+  text-align: center;
+  color: #9b9489;
+  border: 1px dashed rgba(255, 255, 255, 0.13);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.empty-state-mark {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(240, 211, 91, 0.14);
+  color: #f0d35b;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.empty-state-title {
+  color: #e8dfd2;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.empty-state p {
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .section-label {
   font-size: 11px;
-  font-weight: 600;
-  color: #aaa;
+  font-weight: 800;
+  color: #d8d0c3;
   padding-top: 6px;
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .prop-group {
@@ -960,23 +1017,25 @@ function handleStaticImageFileChange(event: Event) {
 
 .prop-label {
   font-size: 11px;
-  color: #888;
+  color: #a69f95;
+  font-weight: 650;
 }
 
 .prop-input {
   width: 100%;
-  padding: 4px 8px;
+  padding: 7px 9px;
   font-size: 12px;
-  background: #242424;
-  color: #e0e0e0;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
+  background: rgba(14, 15, 15, 0.72);
+  color: #eee7dc;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
   box-sizing: border-box;
 }
 
 .prop-input:focus {
   outline: none;
-  border-color: #4fc3f7;
+  border-color: rgba(240, 211, 91, 0.62);
+  box-shadow: 0 0 0 3px rgba(240, 211, 91, 0.1);
 }
 
 .prop-input:disabled {
@@ -986,7 +1045,7 @@ function handleStaticImageFileChange(event: Event) {
 
 .prop-hint {
   font-size: 10px;
-  color: #9a9a9a;
+  color: #9f988f;
 }
 
 .prop-error,

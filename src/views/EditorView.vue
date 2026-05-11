@@ -131,17 +131,12 @@ onMounted(async () => {
 });
 
 const fitScale = computed(() => {
-  const panelCount = 2;
-  const gap = 16;
-  const propertiesWidth = 220;
-  const horizontalPadding = 32;
-  const headerHeight = 32;
   const size = workspaceSize.value;
-  const availWidth = Math.max(1, (size.width - propertiesWidth - horizontalPadding - gap * panelCount) / panelCount);
-  const availHeight = Math.max(1, size.height - headerHeight - 24);
+  const availWidth = Math.max(1, size.width - 96);
+  const availHeight = Math.max(1, size.height - 96);
   const scaleX = availWidth / config.canvas.width;
   const scaleY = availHeight / config.canvas.height;
-  return Math.min(scaleX, scaleY, 1);
+  return Math.min(scaleX, scaleY, 3);
 });
 
 const canvasScale = computed(() => manualZoom.value ?? fitScale.value);
@@ -158,6 +153,24 @@ const canvasTransformStyle = computed(() => ({
   transformOrigin: 'top left',
 }));
 
+const previewScale = computed(() => {
+  const maxWidth = 252;
+  const maxHeight = 188;
+  const scaleX = maxWidth / config.canvas.width;
+  const scaleY = maxHeight / (config.canvas.height + 34);
+  return Math.min(scaleX, scaleY, 1);
+});
+
+const previewContainerStyle = computed(() => ({
+  width: config.canvas.width * previewScale.value + 'px',
+  height: (config.canvas.height + 34) * previewScale.value + 'px',
+}));
+
+const previewTransformStyle = computed(() => ({
+  transform: `scale(${previewScale.value})`,
+  transformOrigin: 'top left',
+}));
+
 onUnmounted(() => {
   window.removeEventListener('resize', updateWorkspaceSize);
   window.removeEventListener('keydown', handleEditorKeydown);
@@ -167,12 +180,42 @@ onUnmounted(() => {
 
 <template>
   <div class="editor-layout">
-    <!-- Toolbar -->
-    <header class="editor-toolbar">
+    <header class="editor-topbar">
       <div class="toolbar-left">
-        <span class="toolbar-title">E-ink Template Editor</span>
+        <span class="app-badge">ESL</span>
+        <div>
+          <span class="toolbar-title">E-ink Template Editor</span>
+          <span class="toolbar-subtitle">电子价签模板工作台</span>
+        </div>
       </div>
-      <div class="toolbar-center">
+      <div class="document-tabs">
+        <span class="document-tab active">{{ config.templateName || '未命名模板' }}</span>
+        <span class="screen-info">{{ screenInfo }}</span>
+      </div>
+      <div class="toolbar-right">
+        <div class="zoom-controls" aria-label="画布缩放控制">
+          <button class="toolbar-btn compact" title="适配窗口" @click="fitZoom">适配</button>
+          <button class="toolbar-btn icon" title="缩小" @click="zoomOut">−</button>
+          <span class="zoom-label">{{ zoomLabel }}</span>
+          <button class="toolbar-btn icon" title="放大" @click="zoomIn">+</button>
+          <button class="toolbar-btn compact" title="重置为 100%" @click="resetZoom">100%</button>
+          <button
+            :class="['toolbar-btn', 'compact', { active: showGrid }]"
+            title="显示或隐藏网格"
+            @click="showGrid = !showGrid"
+          >
+            网格
+          </button>
+        </div>
+        <button class="toolbar-btn primary" :disabled="editorStore.isSaving" @click="handleSave">
+          {{ editorStore.isSaving ? '保存中...' : '保存' }}
+        </button>
+      </div>
+    </header>
+
+    <main class="editor-shell">
+      <aside class="toolbox-panel">
+        <div class="panel-caption">工具</div>
         <EditorToolbar
           :can-undo="editorStore.canUndo"
           :can-redo="editorStore.canRedo"
@@ -206,69 +249,81 @@ onUnmounted(() => {
           @align-bottom="editorStore.alignSelectedVertical('bottom')"
           @toggle-lock="editorStore.toggleLockSelected()"
         />
-      </div>
-      <div class="toolbar-right">
-        <div class="zoom-controls" aria-label="画布缩放控制">
-          <button class="toolbar-btn compact" title="适配窗口" @click="fitZoom">适配</button>
-          <button class="toolbar-btn icon" title="缩小" @click="zoomOut">−</button>
-          <span class="zoom-label">{{ zoomLabel }}</span>
-          <button class="toolbar-btn icon" title="放大" @click="zoomIn">+</button>
-          <button class="toolbar-btn compact" title="重置为 100%" @click="resetZoom">100%</button>
-          <button
-            :class="['toolbar-btn', 'compact', { active: showGrid }]"
-            title="显示或隐藏网格"
-            @click="showGrid = !showGrid"
-          >
-            网格
-          </button>
-        </div>
-        <span class="screen-info">{{ screenInfo }}</span>
-        <button class="toolbar-btn primary" :disabled="editorStore.isSaving" @click="handleSave">
-          {{ editorStore.isSaving ? '保存中...' : '保存' }}
-        </button>
-      </div>
-    </header>
+      </aside>
 
-    <!-- Main workspace -->
-    <main ref="workspaceRef" class="editor-workspace">
-      <div class="canvas-panel edit-panel">
-        <div class="panel-header">编辑画布</div>
-        <div :class="['canvas-container', { 'show-grid': showGrid }]" :style="scaledContainerStyle">
-          <div :style="canvasTransformStyle">
-            <FabricCanvas
-              ref="fabricCanvasRef"
-              :width="config.canvas.width"
-              :height="config.canvas.height"
-            />
+      <section class="editor-stage">
+        <div class="stage-options">
+          <div>
+            <span class="stage-title">编辑画布</span>
+            <span class="stage-meta">{{ config.canvas.width }} × {{ config.canvas.height }} px</span>
+          </div>
+          <span class="stage-hint">选择元素后在右侧调整属性，拖拽画布对象完成排版</span>
+        </div>
+
+        <div ref="workspaceRef" class="stage-viewport">
+          <div class="canvas-shadow" :style="scaledContainerStyle">
+            <div :class="['canvas-container', { 'show-grid': showGrid }]" :style="scaledContainerStyle">
+              <div :style="canvasTransformStyle">
+                <FabricCanvas
+                  ref="fabricCanvasRef"
+                  :width="config.canvas.width"
+                  :height="config.canvas.height"
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="canvas-panel preview-panel">
-        <div class="preview-scaled" :style="scaledContainerStyle">
-          <div :style="canvasTransformStyle">
-            <PreviewCanvas
-              :width="config.canvas.width"
-              :height="config.canvas.height"
-            />
+      <aside class="inspector-dock">
+        <section class="dock-panel preview-dock">
+          <div class="dock-title-row">
+            <span>电子墨水屏预览</span>
+            <span class="dock-kicker">实时</span>
           </div>
-        </div>
-      </div>
+          <div class="preview-stage">
+            <div class="preview-scaled" :style="previewContainerStyle">
+              <div :style="previewTransformStyle">
+                <PreviewCanvas
+                  :width="config.canvas.width"
+                  :height="config.canvas.height"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <!-- Properties Panel -->
-      <PropertiesPanel
-        :selected-object="editorStore.selectedObject"
-        :palette="palette"
-        :custom-fields="customFields"
-        @update-prop="editorStore.updateObjectProp"
-      />
+        <PropertiesPanel
+          :selected-object="editorStore.selectedObject"
+          :palette="palette"
+          :custom-fields="customFields"
+          @update-prop="editorStore.updateObjectProp"
+        />
+
+        <section class="dock-panel screen-dock">
+          <div class="dock-title-row">
+            <span>屏幕色板</span>
+            <span class="dock-kicker">{{ palette.length }} 色</span>
+          </div>
+          <div class="palette-strip">
+            <span
+              v-for="color in palette"
+              :key="color.hex"
+              class="palette-dot"
+              :style="{ backgroundColor: color.hex }"
+              :title="`${color.name} ${color.hex}`"
+            ></span>
+          </div>
+        </section>
+      </aside>
     </main>
 
-    <!-- Status bar -->
     <footer class="editor-statusbar">
       <span>{{ config.screen.type.toUpperCase() }}</span>
       <span>{{ config.canvas.width }} × {{ config.canvas.height }} px</span>
       <span>{{ config.screen.profile.dpi }} DPI</span>
+      <span>Delete 删除选中</span>
+      <span>Cmd/Ctrl + D 复制一份</span>
       <span v-if="saveMessage" :class="['save-message', saveMessage.type]">
         {{ saveMessage.text }}
       </span>
@@ -281,69 +336,121 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #111;
-  color: #e0e0e0;
-  font-family: 'Inter', system-ui, sans-serif;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.06), transparent 28%),
+    linear-gradient(135deg, #1b1d20 0%, #111315 48%, #08090a 100%);
+  color: #ece7df;
+  font-family: var(--app-font-family);
 }
 
-/* Toolbar */
-.editor-toolbar {
+.editor-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
-  padding: 0 16px;
-  background: #1a1a1a;
-  border-bottom: 1px solid #2a2a2a;
+  height: 58px;
+  padding: 0 18px 0 14px;
+  background: linear-gradient(180deg, rgba(46, 48, 49, 0.98), rgba(28, 30, 31, 0.98));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.25);
   flex-shrink: 0;
 }
 
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 238px;
+}
+
+.app-badge {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #f0d35b;
+  color: #151515;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+}
+
 .toolbar-title {
+  display: block;
   font-size: 14px;
-  font-weight: 600;
-  background: linear-gradient(90deg, #64b5f6, #ce93d8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  color: #fff7df;
 }
 
-.toolbar-left,
-.toolbar-right {
-  flex: 0 0 auto;
+.toolbar-subtitle {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #9d9a92;
 }
 
-.toolbar-center {
-  flex: 1 1 auto;
+.document-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
-  margin: 0 12px;
+  flex: 1 1 auto;
+  margin: 0 18px;
+}
+
+.document-tab {
+  min-width: 0;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px 10px 6px 6px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #f6f0e6;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
 }
 
 .zoom-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .screen-info {
   font-size: 12px;
-  color: #888;
-  padding: 4px 12px;
-  background: #242424;
-  border-radius: 4px;
+  color: #b8b0a2;
+  padding: 7px 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
 .toolbar-btn {
-  padding: 6px 16px;
+  padding: 7px 14px;
   font-size: 12px;
-  background: #2a2a2a;
-  color: #ccc;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
+  font-weight: 650;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8e1d6;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -364,92 +471,211 @@ onUnmounted(() => {
 }
 
 .toolbar-btn.active {
-  border-color: #4fc3f7;
-  color: #fff;
-  background: #263947;
+  border-color: rgba(240, 211, 91, 0.55);
+  color: #fff7d1;
+  background: rgba(240, 211, 91, 0.14);
 }
 
 .zoom-label {
   min-width: 42px;
   text-align: center;
   font-size: 12px;
-  color: #aaa;
+  color: #d6cec2;
 }
 
 .toolbar-btn:hover {
-  background: #3a3a3a;
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
 }
 
 .toolbar-btn.primary {
-  background: linear-gradient(135deg, #1565c0, #7b1fa2);
-  border: none;
-  color: white;
+  background: linear-gradient(180deg, #f2d765, #cba33c);
+  border-color: #f4d96b;
+  color: #17130a;
+  box-shadow: 0 8px 20px rgba(211, 164, 50, 0.18);
 }
 
 .toolbar-btn.primary:hover {
   opacity: 0.9;
 }
 
-/* Workspace */
-.editor-workspace {
+.editor-shell {
   flex: 1;
   display: flex;
-  gap: 16px;
-  padding: 16px;
+  min-height: 0;
   overflow: hidden;
-  justify-content: center;
-  align-items: stretch;
 }
 
-.canvas-panel {
+.toolbox-panel {
+  width: 142px;
   display: flex;
   flex-direction: column;
-  max-width: 38%;
-  max-height: 100%;
+  flex-shrink: 0;
+  background: rgba(28, 29, 30, 0.96);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.32);
+  overflow: hidden;
 }
 
-.panel-header {
+.panel-caption {
+  padding: 12px 12px 8px;
+  color: #a9a197;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}
+
+.editor-stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.stage-options {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 18px;
+  color: #c9c0b3;
+  background: rgba(18, 19, 20, 0.76);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.stage-title {
+  margin-right: 10px;
+  color: #f5ede1;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.stage-meta,
+.stage-hint {
   font-size: 12px;
-  color: #888;
-  padding: 6px 12px;
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
+  color: #918b83;
+}
+
+.stage-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 48px;
+  background-color: #252525;
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%);
+  background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+  background-size: 24px 24px;
+}
+
+.canvas-shadow {
+  border-radius: 6px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(255, 255, 255, 0.12);
   flex-shrink: 0;
 }
 
 .canvas-container {
   overflow: hidden;
-  border: 1px solid #2a2a2a;
-  border-radius: 0 0 4px 4px;
-  background: #1a1a1a;
+  border: 1px solid rgba(0, 0, 0, 0.76);
+  border-radius: 6px;
+  background: #151515;
 }
 
 .canvas-container.show-grid {
-  background-color: #1a1a1a;
+  background-color: #181818;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    linear-gradient(rgba(240, 211, 91, 0.11) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(240, 211, 91, 0.11) 1px, transparent 1px);
   background-size: 10px 10px;
 }
 
-.canvas-container :deep(.canvas-container) {
-  transform-origin: top left;
+.inspector-dock {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(26, 27, 28, 0.98);
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.35);
 }
 
-/* Status bar */
+.dock-panel {
+  background: linear-gradient(180deg, rgba(56, 57, 57, 0.92), rgba(33, 34, 35, 0.94));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.16);
+}
+
+.dock-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  color: #f0e9de;
+  font-size: 12px;
+  font-weight: 750;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dock-kicker {
+  color: #a59e94;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.preview-stage {
+  display: flex;
+  justify-content: center;
+  padding: 14px 12px 16px;
+  overflow: hidden;
+}
+
+.preview-scaled {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.screen-dock {
+  flex-shrink: 0;
+}
+
+.palette-strip {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+}
+
+.palette-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
 .editor-statusbar {
   display: flex;
   align-items: center;
   gap: 16px;
   height: 28px;
   padding: 0 16px;
-  background: #1a1a1a;
-  border-top: 1px solid #2a2a2a;
+  background: #111213;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 11px;
-  color: #666;
+  color: #807b73;
   flex-shrink: 0;
 }
 
@@ -462,5 +688,50 @@ onUnmounted(() => {
 }
 .save-message.error {
   color: #f44336;
+}
+
+@media (max-width: 1100px) {
+  .toolbar-left {
+    min-width: 190px;
+  }
+
+  .document-tabs {
+    margin: 0 10px;
+  }
+
+  .stage-hint {
+    display: none;
+  }
+
+  .toolbox-panel {
+    width: 126px;
+  }
+
+  .inspector-dock {
+    width: 272px;
+  }
+}
+
+@media (max-width: 820px) {
+  .toolbar-subtitle,
+  .document-tabs {
+    display: none;
+  }
+
+  .editor-topbar {
+    padding-right: 10px;
+  }
+
+  .toolbox-panel {
+    width: 112px;
+  }
+
+  .inspector-dock {
+    width: 248px;
+  }
+
+  .stage-viewport {
+    padding: 28px;
+  }
 }
 </style>
