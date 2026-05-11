@@ -34,7 +34,8 @@ type LocalTemplateRecord = {
 type InspectorTab = 'properties' | 'layers' | 'palette';
 type DraggedLibraryItem =
   | { type: 'tool'; kind: ToolKind }
-  | { type: 'snippet'; kind: SnippetKind };
+  | { type: 'snippet'; kind: SnippetKind }
+  | { type: 'custom-field'; fieldId: string };
 
 const LOCAL_TEMPLATE_STORAGE_KEY = 'eink-label-template-editor.localTemplates.v1';
 const TOOLBOX_WIDTH_STORAGE_KEY = 'eink-label-template-editor.toolboxWidth.v1';
@@ -145,8 +146,13 @@ const marketSummaryItems = computed(() => {
 
 const palette = computed(() => editorStore.getPalette());
 const customFields = computed(() => {
+  editorStore.selectionVersion;
   return getValidCustomFieldIdsFromPreviewData(config.previewData);
 });
+const customFieldCards = computed(() => customFields.value.map((id) => ({
+  id,
+  sampleValue: config.previewData?.[id] == null ? '' : String(config.previewData[id]),
+})));
 const toolboxPanelStyle = computed(() => ({
   width: `${isToolboxCollapsed.value ? TOOLBOX_COLLAPSED_WIDTH : toolboxWidth.value}px`,
   '--toolbox-expanded-width': `${toolboxWidth.value}px`,
@@ -448,7 +454,7 @@ function closeCustomDataDialog(): void {
 
 async function submitCustomDataDialog(): Promise<void> {
   const fieldId = customDataFieldId.value.trim();
-  const errors = validateCustomFieldId(fieldId);
+  const errors = validateCustomFieldId(fieldId, customFields.value);
   if (errors.length > 0) {
     customDataError.value = errors[0].message;
     return;
@@ -470,6 +476,17 @@ async function submitCustomDataDialog(): Promise<void> {
   }
 }
 
+async function addExistingCustomField(fieldId: string, position?: { left: number; top: number }): Promise<void> {
+  const sampleValue = config.previewData?.[fieldId] == null ? '' : String(config.previewData[fieldId]);
+  editorStore.addCustomDataText({
+    fieldId,
+    sampleValue,
+    position,
+  });
+  isToolboxPeekOpen.value = false;
+  await nextTick();
+}
+
 async function handleAddTool(kind: ToolKind): Promise<void> {
   if (kind === 'CUSTOM_DATA_TEXT') {
     openCustomDataDialog();
@@ -489,7 +506,7 @@ function writeLibraryDragPayload(item: DraggedLibraryItem, event: DragEvent): vo
   if (!event.dataTransfer) return;
   event.dataTransfer.effectAllowed = 'copy';
   event.dataTransfer.setData(TOOL_DRAG_MIME, JSON.stringify(item));
-  event.dataTransfer.setData('text/plain', item.kind);
+  event.dataTransfer.setData('text/plain', item.type === 'custom-field' ? item.fieldId : item.kind);
   (event.currentTarget as HTMLElement | null)?.addEventListener('dragend', () => {
     isToolDropTarget.value = false;
   }, { once: true });
@@ -503,6 +520,14 @@ function handleSnippetDragStart(kind: SnippetKind, event: DragEvent): void {
   writeLibraryDragPayload({ type: 'snippet', kind }, event);
 }
 
+function handleAddCustomField(fieldId: string): void {
+  void addExistingCustomField(fieldId);
+}
+
+function handleCustomFieldDragStart(fieldId: string, event: DragEvent): void {
+  writeLibraryDragPayload({ type: 'custom-field', fieldId }, event);
+}
+
 function parseDraggedLibraryItem(event: DragEvent): DraggedLibraryItem | null {
   const raw = event.dataTransfer?.getData(TOOL_DRAG_MIME);
   if (raw) {
@@ -514,6 +539,9 @@ function parseDraggedLibraryItem(event: DragEvent): DraggedLibraryItem | null {
       if (parsed?.type === 'snippet' && parsed?.kind in SNIPPET_MARKS) {
         return { type: 'snippet', kind: parsed.kind };
       }
+      if (parsed?.type === 'custom-field' && typeof parsed.fieldId === 'string' && customFields.value.includes(parsed.fieldId)) {
+        return { type: 'custom-field', fieldId: parsed.fieldId };
+      }
     } catch {
       return null;
     }
@@ -522,6 +550,7 @@ function parseDraggedLibraryItem(event: DragEvent): DraggedLibraryItem | null {
   const fallback = event.dataTransfer?.getData('text/plain');
   if (fallback && fallback in TOOL_MARKS) return { type: 'tool', kind: fallback as ToolKind };
   if (fallback && fallback in SNIPPET_MARKS) return { type: 'snippet', kind: fallback as SnippetKind };
+  if (fallback && customFields.value.includes(fallback)) return { type: 'custom-field', fieldId: fallback };
   return null;
 }
 
@@ -571,8 +600,10 @@ async function handleStageDrop(event: DragEvent): Promise<void> {
     }
     await editorStore.addElement(item.kind, position);
     rememberTool(item.kind);
-  } else {
+  } else if (item.type === 'snippet') {
     await editorStore.addSnippet(item.kind, position);
+  } else {
+    await addExistingCustomField(item.fieldId, position);
   }
   isToolboxPeekOpen.value = false;
 }
@@ -1094,10 +1125,13 @@ onUnmounted(() => {
           <EditorToolbar
             :recent-tools="recentTools"
             :currency-symbol="activeMarketProfile.price.currencySymbol"
+            :custom-fields="customFieldCards"
             @add-tool="handleAddTool"
             @add-snippet="handleAddSnippet"
+            @add-custom-field="handleAddCustomField"
             @tool-drag-start="handleToolDragStart"
             @snippet-drag-start="handleSnippetDragStart"
+            @custom-field-drag-start="handleCustomFieldDragStart"
             @apply-starter-template="editorStore.applyStarterTemplate"
           />
         </div>

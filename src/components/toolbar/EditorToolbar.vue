@@ -29,19 +29,28 @@ type TemplateCard = {
   description: string;
 };
 
+type CustomFieldCard = {
+  id: string;
+  sampleValue: string;
+};
+
 const props = withDefaults(defineProps<{
   recentTools?: ToolKind[];
   currencySymbol?: string;
+  customFields?: CustomFieldCard[];
 }>(), {
   recentTools: () => [],
   currencySymbol: '¥',
+  customFields: () => [],
 });
 
 const emit = defineEmits<{
   'add-tool': [kind: ToolKind];
   'add-snippet': [kind: SnippetKind];
+  'add-custom-field': [fieldId: string];
   'tool-drag-start': [kind: ToolKind, event: DragEvent];
   'snippet-drag-start': [kind: SnippetKind, event: DragEvent];
+  'custom-field-drag-start': [fieldId: string, event: DragEvent];
   'apply-starter-template': [kind: StarterTemplateKind];
 }>();
 
@@ -247,6 +256,14 @@ function dragTool(kind: ToolKind, event: DragEvent): void {
 function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   emit('snippet-drag-start', kind, event);
 }
+
+function addCustomField(fieldId: string): void {
+  emit('add-custom-field', fieldId);
+}
+
+function dragCustomField(fieldId: string, event: DragEvent): void {
+  emit('custom-field-drag-start', fieldId, event);
+}
 </script>
 
 <template>
@@ -331,6 +348,29 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
             <span v-if="tool.badge" class="tool-badge">{{ tool.badge }}</span>
           </button>
         </div>
+
+        <template v-if="props.customFields.length">
+          <div class="subsection-label">{{ t('toolbar.tools.CUSTOM_DATA_TEXT.title') }}</div>
+          <div class="tool-card-list compact-list">
+            <button
+              v-for="field in props.customFields"
+              :key="field.id"
+              class="tool-card compact-card custom-field-card"
+              type="button"
+              draggable="true"
+              :title="t('toolbar.addTitle', { title: field.id })"
+              @click="addCustomField(field.id)"
+              @dragstart="dragCustomField(field.id, $event)"
+            >
+              <span class="tool-mark">{}</span>
+              <span class="tool-card-copy">
+                <span class="tool-card-title">{{ field.id }}</span>
+                <small>{{ field.sampleValue || t('toolbar.customData.defaultSample') }}</small>
+              </span>
+              <span class="tool-badge">custom</span>
+            </button>
+          </div>
+        </template>
 
         <div class="subsection-label">{{ t('toolbar.basicDrawing') }}</div>
         <div class="tool-card-list compact-list">

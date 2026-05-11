@@ -102,7 +102,7 @@ watch(
     if (!open) return;
     apiEndpoint.value = props.config.ocrApi
       ?? localStorage.getItem(OCR_API_STORAGE_KEY)
-      ?? '/ocr/price-tag';
+      ?? '';
   },
   { immediate: true }
 );
@@ -149,12 +149,17 @@ async function runRecognition(): Promise<void> {
   errorMessage.value = '';
   isRecognizing.value = true;
   try {
+    const endpoint = apiEndpoint.value.trim();
     if (providerMode.value !== 'browser-local') {
-      localStorage.setItem(OCR_API_STORAGE_KEY, apiEndpoint.value.trim());
+      if (endpoint) {
+        localStorage.setItem(OCR_API_STORAGE_KEY, endpoint);
+      } else {
+        localStorage.removeItem(OCR_API_STORAGE_KEY);
+      }
     }
     const result = await recognizePriceTag(file, {
       mode: providerMode.value,
-      apiEndpoint: apiEndpoint.value.trim() || undefined,
+      apiEndpoint: endpoint || undefined,
       config: props.config,
     });
     recognized.value = result;
