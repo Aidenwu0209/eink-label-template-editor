@@ -2,7 +2,7 @@
  * Save Payload Builder — generates the complete template save payload
  * including Full JSON, Static PNG Base64, and Dynamic Metadata.
  */
-import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData } from '@/boot/types';
+import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData, SaveExportMode } from '@/boot/types';
 import { SYSTEM_FIELDS } from '@/fields/constants';
 import { translate, type PriceFormatProfile } from '@/i18n';
 
@@ -44,9 +44,31 @@ export interface StaticDynamic {
   dynamicMetadata: DynamicMetadata;
 }
 
+export type SavePayloadMode = SaveExportMode | 'both';
+
+export interface FabricJsonSelectedExport {
+  mode: 'fabric-json';
+  fullJson: FabricJSON;
+}
+
+export interface StaticDynamicSelectedExport {
+  mode: 'static-dynamic';
+  staticDynamic: StaticDynamic;
+}
+
+export interface BothSelectedExport {
+  mode: 'both';
+  fullJson: FabricJSON;
+  staticDynamic: StaticDynamic;
+}
+
+export type SelectedExport = FabricJsonSelectedExport | StaticDynamicSelectedExport | BothSelectedExport;
+
 export interface SavePayload {
   templateId: string;
   templateName: string;
+  exportMode: SavePayloadMode;
+  selectedExport: SelectedExport;
   locale: string;
   market: string;
   profile: {
@@ -59,6 +81,10 @@ export interface SavePayload {
   };
   fullJson: FabricJSON;
   staticDynamic: StaticDynamic;
+}
+
+export interface BuildSavePayloadOptions {
+  exportMode?: SavePayloadMode;
 }
 
 // ══════════ Reverse Mapping ══════════
@@ -240,13 +266,15 @@ function generateTemplateId(): string {
 export function buildSavePayload(
   config: BootConfig,
   fabricJson: FabricJSON,
-  canvasDataURL: string
+  canvasDataURL: string,
+  options: BuildSavePayloadOptions = {}
 ): SavePayload {
   resetWidgetCounter();
 
   const previewData = config.previewData;
   const priceFormat = config.marketProfile.price;
   const discountFormatTemplate = config.marketProfile.discountFormatTemplate;
+  const exportMode: SavePayloadMode = options.exportMode ?? config.saveExportMode ?? 'both';
 
   // Extract dynamic widgets from Fabric JSON
   const widgets: Widget[] = [];
@@ -257,24 +285,34 @@ export function buildSavePayload(
     }
   }
 
+  const staticDynamic: StaticDynamic = {
+    staticImage: {
+      type: 'base64',
+      format: 'png',
+      data: canvasDataURL,
+    },
+    dynamicMetadata: {
+      fontFamily: 'AlibabaPuHuiTi',
+      reservedFields: [...SYSTEM_FIELDS],
+      widgets,
+    },
+  };
+
+  const selectedExport: SelectedExport = exportMode === 'fabric-json'
+    ? { mode: 'fabric-json', fullJson: fabricJson }
+    : exportMode === 'static-dynamic'
+      ? { mode: 'static-dynamic', staticDynamic }
+      : { mode: 'both', fullJson: fabricJson, staticDynamic };
+
   return {
     templateId: config.template?.id ?? generateTemplateId(),
     templateName: config.templateName ?? translate('starter.defaultTemplateName'),
+    exportMode,
+    selectedExport,
     locale: config.locale,
     market: config.market,
     profile: buildProfilePayload(config),
     fullJson: fabricJson,
-    staticDynamic: {
-      staticImage: {
-        type: 'base64',
-        format: 'png',
-        data: canvasDataURL,
-      },
-      dynamicMetadata: {
-        fontFamily: 'AlibabaPuHuiTi',
-        reservedFields: [...SYSTEM_FIELDS],
-        widgets,
-      },
-    },
+    staticDynamic,
   };
 }

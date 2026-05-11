@@ -62,6 +62,55 @@ describe('SavePayloadBuilder', () => {
     ]);
   });
 
+  it('marks Fabric JSON mode as the selected export for re-editable templates', () => {
+    const config = baseConfig();
+    const fabricJson: FabricJSON = {
+      version: '7.0',
+      objects: [{ type: 'rect', left: 0, top: 0, width: 40, height: 20 } as any],
+    };
+
+    const payload = buildSavePayload(config, fabricJson, 'data:image/png;base64,xxx', {
+      exportMode: 'fabric-json',
+    });
+
+    expect(payload.exportMode).toBe('fabric-json');
+    expect(payload.selectedExport).toEqual({
+      mode: 'fabric-json',
+      fullJson: fabricJson,
+    });
+  });
+
+  it('marks static background plus dynamic metadata mode as the selected export', () => {
+    const config = baseConfig();
+    const fabricJson: FabricJSON = {
+      version: '7.0',
+      objects: [
+        {
+          type: 'textbox',
+          left: 12,
+          top: 18,
+          width: 90,
+          height: 20,
+          extensionType: 'TEXT',
+          extension: { fieldBinding: 'skuName' },
+        } as any,
+      ],
+    };
+
+    const payload = buildSavePayload(config, fabricJson, 'data:image/png;base64,static', {
+      exportMode: 'static-dynamic',
+    });
+
+    expect(payload.exportMode).toBe('static-dynamic');
+    expect(payload.selectedExport.mode).toBe('static-dynamic');
+    if (payload.selectedExport.mode !== 'static-dynamic') throw new Error('Expected static dynamic export');
+    expect(payload.selectedExport.staticDynamic.staticImage.data).toBe('data:image/png;base64,static');
+    expect(payload.selectedExport.staticDynamic.dynamicMetadata.widgets[0]).toEqual(expect.objectContaining({
+      type: 'TEXT',
+      fieldId: 'skuName',
+    }));
+  });
+
   it('uses the current runtime profile in saved payload after color mode changes', () => {
     const config = {
       ...baseConfig(),

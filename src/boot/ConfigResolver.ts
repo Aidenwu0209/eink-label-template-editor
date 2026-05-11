@@ -71,6 +71,7 @@ export class ConfigResolver {
       },
       onSave: payload.onSave,
       saveApi: payload.saveApi,
+      saveExportMode: payload.saveExportMode,
       ocrApi: payload.ocrApi,
     };
   }
