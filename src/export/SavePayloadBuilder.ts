@@ -72,6 +72,10 @@ function nextWidgetId(type: string): string {
   return `${type.toLowerCase()}_${String(widgetCounter).padStart(3, '0')}`;
 }
 
+function widgetIdForObject(obj: FabricObjectJSON, type: string): string {
+  return obj.id || nextWidgetId(type);
+}
+
 // ══════════ Widget Extraction ══════════
 
 function extractWidget(
@@ -85,7 +89,7 @@ function extractWidget(
     case 'TEXT': {
       if (!ext?.fieldBinding) return null;
       return {
-        id: nextWidgetId('text'),
+        id: widgetIdForObject(obj, 'text'),
         type: 'TEXT',
         fieldId: ext.fieldBinding,
         x: Math.round(obj.left ?? 0),
@@ -101,7 +105,7 @@ function extractWidget(
     }
     case 'PRICE': {
       return {
-        id: nextWidgetId('price'),
+        id: widgetIdForObject(obj, 'price'),
         type: 'PRICE',
         fieldId: 'price',
         x: Math.round(obj.left ?? 0),
@@ -113,7 +117,7 @@ function extractWidget(
     }
     case 'DISCOUNT': {
       return {
-        id: nextWidgetId('discount'),
+        id: widgetIdForObject(obj, 'discount'),
         type: 'DISCOUNT',
         fieldId: 'discount',
         x: Math.round(obj.left ?? 0),
@@ -127,7 +131,7 @@ function extractWidget(
     case 'IMAGE': {
       if (ext?.source !== 'dynamic') return null;
       return {
-        id: nextWidgetId('image'),
+        id: widgetIdForObject(obj, 'image'),
         type: 'IMAGE',
         mode: 'dynamic',
         fieldId: 'imageUrl',
@@ -140,7 +144,7 @@ function extractWidget(
     }
     case 'QRCODE': {
       return {
-        id: nextWidgetId('qrcode'),
+        id: widgetIdForObject(obj, 'qrcode'),
         type: 'QRCODE',
         fieldId: 'qrContent',
         x: Math.round(obj.left ?? 0),
@@ -155,7 +159,7 @@ function extractWidget(
     }
     case 'BARCODE': {
       return {
-        id: nextWidgetId('barcode'),
+        id: widgetIdForObject(obj, 'barcode'),
         type: 'BARCODE',
         fieldId: 'barcodeContent',
         x: Math.round(obj.left ?? 0),

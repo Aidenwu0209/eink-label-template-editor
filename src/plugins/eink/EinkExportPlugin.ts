@@ -34,6 +34,8 @@ export class EinkExportPlugin extends BasePlugin {
   }
 
   async exportDitheredImage(format: 'png' | 'bmp' = 'png'): Promise<Blob> {
+    // Export always renders from the current full-resolution canvas, never from
+    // the throttled preview cache.
     const imageData = this.editor.getCanvasImageData();
     const dithered = this.renderer.renderPreview(imageData);
     return this.imageDataToBlob(dithered, format);

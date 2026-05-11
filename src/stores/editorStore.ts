@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia';
-import { shallowRef, ref } from 'vue';
-import { fabric } from 'fabric';
+import { computed, shallowRef, ref } from 'vue';
+import * as fabric from 'fabric';
 import { EditorCore } from '@/core/EditorCore';
 import { EinkColorPlugin } from '@/plugins/eink/EinkColorPlugin';
 import { EinkRenderPlugin } from '@/plugins/eink/EinkRenderPlugin';
 import { EinkExportPlugin } from '@/plugins/eink/EinkExportPlugin';
-import type { BootConfig } from '@/boot/types';
+import type { BootConfig, FabricJSON, FabricObjectJSON } from '@/boot/types';
 import type { ColorEntry } from '@/screen/types';
 import { buildSavePayload, type SavePayload } from '@/export/SavePayloadBuilder';
 import {
@@ -59,6 +59,12 @@ export interface TextExtension {
 export const IMAGE_FIT_MODES = ['contain', 'cover', 'fill'] as const;
 export type ImageFitMode = (typeof IMAGE_FIT_MODES)[number];
 
+export interface ComponentWarning {
+  code: string;
+  message: string;
+  severity: 'warning';
+}
+
 /** IMAGE component extension data stored on fabric object */
 export interface ImageExtension {
   /** static or dynamic image source */
@@ -71,6 +77,10 @@ export interface ImageExtension {
   fitMode: ImageFitMode;
   /** Background color (palette-constrained) */
   backgroundColor: string;
+  /** Last render load status, used by the properties panel for explicit feedback */
+  loadStatus?: 'empty' | 'loaded' | 'error';
+  /** Last render load error, if any */
+  loadError?: string | null;
 }
 
 /** PRICE style for a single segment (currency / integer / decimal) */
@@ -96,6 +106,8 @@ export interface QrcodeExtension {
   foregroundColor: string;
   /** Background color (palette-constrained) */
   backgroundColor: string;
+  /** Last render readability warnings */
+  readabilityWarnings?: ComponentWarning[];
 }
 
 /** BARCODE component extension data stored on fabric object */
@@ -110,6 +122,8 @@ export interface BarcodeExtension {
   foregroundColor: string;
   /** Background color (palette-constrained) */
   backgroundColor: string;
+  /** Last render readability warnings */
+  readabilityWarnings?: ComponentWarning[];
 }
 
 /** DISCOUNT component extension data stored on fabric object */
@@ -154,12 +168,81 @@ export interface PriceExtension {
   decimalStyle: PriceStyleSegment & { offsetY: number };
 }
 
+type HorizontalAlignment = 'left' | 'center' | 'right';
+type VerticalAlignment = 'top' | 'middle' | 'bottom';
+type LayerMove = 'forward' | 'backward' | 'front' | 'back';
+
+interface HistoryState {
+  version?: string;
+  background?: unknown;
+  objects: FabricObjectJSON[];
+  selectedIds: string[];
+}
+
+const WORKSPACE_ID = 'workspace';
+const HISTORY_LIMIT = 40;
+const FABRIC_STATE_KEYS = [
+  'id',
+  'selectable',
+  'hasControls',
+  'editable',
+  'evented',
+  'hoverCursor',
+  'lockMovementX',
+  'lockMovementY',
+  'lockScalingX',
+  'lockScalingY',
+  'lockRotation',
+  'lockSkewingX',
+  'lockSkewingY',
+  'locked',
+  'extensionType',
+  'extension',
+  'verticalAlign',
+];
+const RUNTIME_STATE_KEYS = [
+  'selectable',
+  'hasControls',
+  'editable',
+  'evented',
+  'hoverCursor',
+  'lockMovementX',
+  'lockMovementY',
+  'lockScalingX',
+  'lockScalingY',
+  'lockRotation',
+  'lockSkewingX',
+  'lockSkewingY',
+  'locked',
+];
+
 export const useEditorStore = defineStore('editor', () => {
   const editor = shallowRef<EditorCore | null>(null);
   const isReady = ref(false);
   const selectedObject = shallowRef<fabric.Object | null>(null);
   const savePayload = ref<SavePayload | null>(null);
   const isSaving = ref(false);
+  const historyStack = ref<HistoryState[]>([]);
+  const historyIndex = ref(-1);
+  const clipboardObjects = ref<FabricObjectJSON[] | null>(null);
+  const selectionVersion = ref(0);
+
+  let historySuppression = 0;
+  let objectIdCounter = 0;
+  let pasteOffset = 0;
+
+  const canUndo = computed(() => historyIndex.value > 0);
+  const canRedo = computed(() => historyIndex.value >= 0 && historyIndex.value < historyStack.value.length - 1);
+  const hasClipboard = computed(() => Boolean(clipboardObjects.value?.length));
+  const hasActiveSelection = computed(() => {
+    selectionVersion.value;
+    return getActiveDrawableObjects().length > 0;
+  });
+  const isActiveSelectionLocked = computed(() => {
+    selectionVersion.value;
+    const objects = getActiveDrawableObjects();
+    return objects.length > 0 && objects.every(isObjectLocked);
+  });
 
   function initEditor(el: HTMLCanvasElement, config: BootConfig) {
     const core = new EditorCore(el, config);
@@ -170,27 +253,284 @@ export const useEditorStore = defineStore('editor', () => {
 
     // Bind selection events
     core.events.on('object:selected', (objects) => {
-      selectedObject.value = objects.length === 1 ? objects[0] : null;
+      const drawableObjects = objects.filter((obj) => !isWorkspaceObject(obj));
+      selectedObject.value = drawableObjects.length === 1 ? drawableObjects[0] : null;
+      selectionVersion.value++;
     });
     core.events.on('object:deselected', () => {
       selectedObject.value = null;
+      selectionVersion.value++;
     });
 
     editor.value = core;
     isReady.value = true;
+    bindHistoryEvents(core);
+    ensureWorkspace(core);
+    resetHistoryToCurrent();
   }
 
   function getPalette(): ColorEntry[] {
     return editor.value?.bootConfig.screen.profile.palette.slice() ?? [];
   }
 
+  function isWorkspaceObject(obj: fabric.Object | null | undefined): boolean {
+    return Boolean(obj && (obj as any).id === WORKSPACE_ID);
+  }
+
+  function getCanvasDrawableObjects(core: EditorCore): fabric.Object[] {
+    return core.fabricCanvas.getObjects().filter((obj) => !isWorkspaceObject(obj));
+  }
+
+  function getActiveDrawableObjects(core = editor.value): fabric.Object[] {
+    if (!core) return [];
+    return core.fabricCanvas.getActiveObjects().filter((obj) => !isWorkspaceObject(obj));
+  }
+
+  function createObjectId(type = 'object'): string {
+    const safeType = type.replace(/[^a-z0-9]+/gi, '_').toLowerCase() || 'object';
+    objectIdCounter++;
+    return `${safeType}_${Date.now().toString(36)}_${objectIdCounter.toString(36)}`;
+  }
+
+  function ensureObjectId(obj: fabric.Object): string | undefined {
+    if (isWorkspaceObject(obj)) return undefined;
+    if (!(obj as any).id) {
+      (obj as any).id = createObjectId((obj as any).extensionType ?? obj.type ?? 'object');
+    }
+    return (obj as any).id;
+  }
+
+  function assignFreshObjectId(obj: fabric.Object): void {
+    if (isWorkspaceObject(obj)) return;
+    (obj as any).id = createObjectId((obj as any).extensionType ?? obj.type ?? 'object');
+  }
+
+  function ensureAllObjectIds(core: EditorCore): void {
+    getCanvasDrawableObjects(core).forEach(ensureObjectId);
+  }
+
+  function findWorkspace(core: EditorCore): fabric.Object | undefined {
+    return core.fabricCanvas.getObjects().find(isWorkspaceObject);
+  }
+
+  function createWorkspaceObject(core: EditorCore): fabric.Rect {
+    const workspace = new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: core.bootConfig.canvas.width,
+      height: core.bootConfig.canvas.height,
+      fill: core.bootConfig.screen.profile.defaultBackground,
+      selectable: false,
+      hasControls: false,
+      hoverCursor: 'default',
+      strokeWidth: 0,
+    });
+    (workspace as any).id = WORKSPACE_ID;
+    return workspace;
+  }
+
+  function ensureWorkspace(core: EditorCore): fabric.Object {
+    const canvas = core.fabricCanvas;
+    const workspaces = canvas.getObjects().filter(isWorkspaceObject);
+    let workspace = workspaces[0];
+
+    workspaces.slice(1).forEach((obj) => canvas.remove(obj));
+
+    if (!workspace) {
+      workspace = createWorkspaceObject(core);
+      canvas.insertAt(0, workspace);
+    } else {
+      workspace.set({
+        left: 0,
+        top: 0,
+        width: core.bootConfig.canvas.width,
+        height: core.bootConfig.canvas.height,
+        fill: core.bootConfig.screen.profile.defaultBackground,
+        selectable: false,
+        hasControls: false,
+        hoverCursor: 'default',
+        strokeWidth: 0,
+      });
+      canvas.moveObjectTo(workspace, 0);
+    }
+
+    return workspace;
+  }
+
+  function workspaceToJSON(core: EditorCore): FabricObjectJSON {
+    const workspace = findWorkspace(core) ?? createWorkspaceObject(core);
+    return cloneJson(workspace.toObject(FABRIC_STATE_KEYS) as FabricObjectJSON);
+  }
+
+  function cloneJson<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+
+  function serializeObject(obj: fabric.Object): FabricObjectJSON {
+    return cloneJson(obj.toObject(FABRIC_STATE_KEYS) as FabricObjectJSON);
+  }
+
+  function historySignature(state: HistoryState): string {
+    return JSON.stringify({
+      background: state.background ?? null,
+      objects: state.objects,
+    });
+  }
+
+  function captureHistoryState(core: EditorCore): HistoryState {
+    ensureAllObjectIds(core);
+    const json = core.fabricCanvas.toObject(FABRIC_STATE_KEYS) as unknown as FabricJSON;
+    const objects = (json.objects ?? [])
+      .filter((obj) => obj.id !== WORKSPACE_ID)
+      .map((obj) => cloneJson(obj));
+    const selectedIds = getActiveDrawableObjects(core)
+      .map(ensureObjectId)
+      .filter((id): id is string => Boolean(id));
+
+    return {
+      version: json.version,
+      background: json.background,
+      objects,
+      selectedIds,
+    };
+  }
+
+  function resetHistoryToCurrent(): void {
+    const core = editor.value;
+    if (!core) return;
+    const state = captureHistoryState(core);
+    historyStack.value = [state];
+    historyIndex.value = 0;
+  }
+
+  function commitHistory(): void {
+    const core = editor.value;
+    if (!core || historySuppression > 0) return;
+
+    const state = captureHistoryState(core);
+    const current = historyStack.value[historyIndex.value];
+    if (current && historySignature(current) === historySignature(state)) {
+      current.selectedIds = state.selectedIds;
+      return;
+    }
+
+    if (historyIndex.value < historyStack.value.length - 1) {
+      historyStack.value = historyStack.value.slice(0, historyIndex.value + 1);
+    }
+
+    historyStack.value.push(state);
+    if (historyStack.value.length > HISTORY_LIMIT) {
+      historyStack.value.shift();
+    } else {
+      historyIndex.value++;
+    }
+
+    if (historyStack.value.length === HISTORY_LIMIT) {
+      historyIndex.value = historyStack.value.length - 1;
+    }
+  }
+
+  function bindHistoryEvents(core: EditorCore): void {
+    const onCanvasChanged = (event: { target?: fabric.Object }) => {
+      if (historySuppression > 0) return;
+      if (event.target && isWorkspaceObject(event.target)) return;
+      commitHistory();
+    };
+
+    core.fabricCanvas.on('object:added', onCanvasChanged);
+    core.fabricCanvas.on('object:removed', onCanvasChanged);
+    core.fabricCanvas.on('object:modified', onCanvasChanged);
+  }
+
+  async function loadCanvasJSON(core: EditorCore, json: FabricJSON): Promise<void> {
+    await core.fabricCanvas.loadFromJSON(json);
+    core.fabricCanvas.renderAll();
+  }
+
+  async function restoreHistoryState(state: HistoryState): Promise<void> {
+    const core = editor.value;
+    if (!core) return;
+
+    historySuppression++;
+    try {
+      const json = {
+        version: state.version,
+        background: state.background,
+        objects: [
+          workspaceToJSON(core),
+          ...cloneJson(state.objects),
+        ],
+      } as FabricJSON;
+
+      await loadCanvasJSON(core, json);
+      ensureWorkspace(core);
+      ensureAllObjectIds(core);
+
+      const objectsById = new Map(
+        getCanvasDrawableObjects(core).map((obj) => [(obj as any).id, obj] as const)
+      );
+      const restoredSelection = state.selectedIds
+        .map((id) => objectsById.get(id))
+        .filter((obj): obj is fabric.Object => Boolean(obj));
+      selectObjects(core, restoredSelection);
+      core.fabricCanvas.renderAll();
+    } finally {
+      historySuppression--;
+    }
+  }
+
+  function runHistoryMutation(mutator: () => void): void {
+    historySuppression++;
+    try {
+      mutator();
+    } finally {
+      historySuppression--;
+    }
+    selectionVersion.value++;
+    commitHistory();
+  }
+
+  function isObjectOnCanvas(core: EditorCore, obj: fabric.Object): boolean {
+    return core.fabricCanvas.getObjects().includes(obj);
+  }
+
+  function selectObjects(core: EditorCore, objects: fabric.Object[]): void {
+    const canvas = core.fabricCanvas;
+    const selectableObjects = objects.filter((obj) => !isWorkspaceObject(obj) && isObjectOnCanvas(core, obj));
+
+    canvas.discardActiveObject();
+    if (selectableObjects.length === 1) {
+      canvas.setActiveObject(selectableObjects[0]);
+      selectedObject.value = selectableObjects[0];
+    } else if (selectableObjects.length > 1) {
+      const selection = new fabric.ActiveSelection(selectableObjects, { canvas } as any);
+      canvas.setActiveObject(selection);
+      selectedObject.value = null;
+    } else {
+      selectedObject.value = null;
+    }
+
+    selectionVersion.value++;
+    canvas.requestRenderAll();
+  }
+
+  function discardActiveSelectionForMutation(core: EditorCore, objects: fabric.Object[]): void {
+    if (objects.length > 1 && core.fabricCanvas.getActiveObject()?.type === 'activeSelection') {
+      core.fabricCanvas.discardActiveObject();
+      objects.forEach((obj) => obj.setCoords());
+    }
+  }
+
   function addVisualObject(obj: fabric.Object): void {
     const core = editor.value;
     if (!core) return;
-    core.fabricCanvas.add(obj);
-    core.fabricCanvas.setActiveObject(obj);
-    selectedObject.value = obj;
-    core.fabricCanvas.renderAll();
+    ensureObjectId(obj);
+    runHistoryMutation(() => {
+      core.fabricCanvas.add(obj);
+      core.fabricCanvas.setActiveObject(obj);
+      selectedObject.value = obj;
+      core.fabricCanvas.renderAll();
+    });
   }
 
   function getObjectBounds(obj: fabric.Object): VisualBounds {
@@ -209,12 +549,27 @@ export const useEditorStore = defineStore('editor', () => {
     (obj as fabric.Textbox).set('text', value == null ? '' : String(value));
   }
 
+  function copyObjectRuntimeState(oldObj: fabric.Object, nextObj: fabric.Object): void {
+    const id = ensureObjectId(oldObj);
+    if (id) (nextObj as any).id = id;
+    RUNTIME_STATE_KEYS.forEach((key) => {
+      const value = (oldObj as any)[key];
+      if (value !== undefined) {
+        (nextObj as any)[key] = value;
+      }
+    });
+    if (isObjectLocked(oldObj)) {
+      setObjectLocked(nextObj, true);
+    }
+  }
+
   function replaceObject(oldObj: fabric.Object, nextObj: fabric.Object): void {
     const core = editor.value;
     if (!core) return;
+    copyObjectRuntimeState(oldObj, nextObj);
     const index = core.fabricCanvas.getObjects().indexOf(oldObj);
     core.fabricCanvas.remove(oldObj);
-    core.fabricCanvas.insertAt(nextObj, Math.max(index, 0), false);
+    core.fabricCanvas.insertAt(Math.max(index, 0), nextObj);
     core.fabricCanvas.setActiveObject(nextObj);
     selectedObject.value = nextObj;
     core.fabricCanvas.renderAll();
@@ -476,76 +831,406 @@ export const useEditorStore = defineStore('editor', () => {
     addVisualObject(createBarcodeVisual({ left, top, width: w, height: h }, config.previewData?.barcodeContent, ext));
   }
 
-  function updateObjectProp(key: string, value: unknown): void {
+  async function updateObjectProp(key: string, value: unknown): Promise<void> {
     const obj = selectedObject.value;
     const core = editor.value;
     if (!obj || !core) return;
     let shouldRefreshVisual = false;
 
-    if (obj.type === 'line' && ['x1', 'y1', 'x2', 'y2'].includes(key)) {
-      const line = obj as fabric.Line;
-      const coords = {
-        x1: (line as any).x1,
-        y1: (line as any).y1,
-        x2: (line as any).x2,
-        y2: (line as any).y2,
-      };
-      coords[key as 'x1' | 'y1' | 'x2' | 'y2'] = value as number;
-      line.set({ x1: coords.x1, y1: coords.y1, x2: coords.x2, y2: coords.y2 });
-    } else if ((obj as any).extensionType === 'TEXT' && key.startsWith('ext.')) {
-      const extKey = key.slice(4);
-      const ext = (obj as any).extension;
-      if (ext) {
-        ext[extKey] = value;
+    historySuppression++;
+    try {
+      if (obj.type === 'line' && ['x1', 'y1', 'x2', 'y2'].includes(key)) {
+        const line = obj as fabric.Line;
+        const coords = {
+          x1: (line as any).x1,
+          y1: (line as any).y1,
+          x2: (line as any).x2,
+          y2: (line as any).y2,
+        };
+        coords[key as 'x1' | 'y1' | 'x2' | 'y2'] = value as number;
+        line.set({ x1: coords.x1, y1: coords.y1, x2: coords.x2, y2: coords.y2 });
+      } else if ((obj as any).extensionType === 'TEXT' && key.startsWith('ext.')) {
+        const extKey = key.slice(4);
+        const ext = (obj as any).extension;
+        if (ext) {
+          ext[extKey] = value;
+        }
+        shouldRefreshVisual = true;
+      } else if ((obj as any).extensionType === 'PRICE' && key.startsWith('ext.')) {
+        const extKey = key.slice(4);
+        const ext = (obj as any).extension;
+        if (ext) {
+          ext[extKey] = value;
+        }
+        shouldRefreshVisual = true;
+      } else if ((obj as any).extensionType === 'DISCOUNT' && key.startsWith('ext.')) {
+        const extKey = key.slice(4);
+        const ext = (obj as any).extension;
+        if (ext) {
+          ext[extKey] = value;
+        }
+        shouldRefreshVisual = true;
+      } else if ((obj as any).extensionType === 'IMAGE' && key.startsWith('ext.')) {
+        const extKey = key.slice(4);
+        const ext = (obj as any).extension;
+        if (ext) {
+          ext[extKey] = value;
+        }
+        shouldRefreshVisual = true;
+      } else if ((obj as any).extensionType === 'QRCODE' && key.startsWith('ext.')) {
+        const extKey = key.slice(4);
+        const ext = (obj as any).extension;
+        if (ext) {
+          ext[extKey] = value;
+        }
+        shouldRefreshVisual = true;
+      } else if ((obj as any).extensionType === 'BARCODE' && key.startsWith('ext.')) {
+        const extKey = key.slice(4);
+        const ext = (obj as any).extension;
+        if (ext) {
+          ext[extKey] = value;
+        }
+        shouldRefreshVisual = true;
+      } else {
+        obj.set(key as any, value);
+        shouldRefreshVisual = Boolean((obj as any).extensionType)
+          && ['width', 'height', 'left', 'top'].includes(key);
       }
-      shouldRefreshVisual = true;
-    } else if ((obj as any).extensionType === 'PRICE' && key.startsWith('ext.')) {
-      const extKey = key.slice(4);
-      const ext = (obj as any).extension;
-      if (ext) {
-        ext[extKey] = value;
+
+      obj.setCoords();
+      if (shouldRefreshVisual) {
+        await refreshExtendedObject(obj);
+      } else {
+        core.fabricCanvas.renderAll();
       }
-      shouldRefreshVisual = true;
-    } else if ((obj as any).extensionType === 'DISCOUNT' && key.startsWith('ext.')) {
-      const extKey = key.slice(4);
-      const ext = (obj as any).extension;
-      if (ext) {
-        ext[extKey] = value;
-      }
-      shouldRefreshVisual = true;
-    } else if ((obj as any).extensionType === 'IMAGE' && key.startsWith('ext.')) {
-      const extKey = key.slice(4);
-      const ext = (obj as any).extension;
-      if (ext) {
-        ext[extKey] = value;
-      }
-      shouldRefreshVisual = true;
-    } else if ((obj as any).extensionType === 'QRCODE' && key.startsWith('ext.')) {
-      const extKey = key.slice(4);
-      const ext = (obj as any).extension;
-      if (ext) {
-        ext[extKey] = value;
-      }
-      shouldRefreshVisual = true;
-    } else if ((obj as any).extensionType === 'BARCODE' && key.startsWith('ext.')) {
-      const extKey = key.slice(4);
-      const ext = (obj as any).extension;
-      if (ext) {
-        ext[extKey] = value;
-      }
-      shouldRefreshVisual = true;
-    } else {
-      obj.set(key as any, value);
-      shouldRefreshVisual = Boolean((obj as any).extensionType)
-        && ['width', 'height', 'left', 'top'].includes(key);
+    } finally {
+      historySuppression--;
     }
 
-    obj.setCoords();
-    if (shouldRefreshVisual) {
-      void refreshExtendedObject(obj);
-    } else {
+    selectionVersion.value++;
+    commitHistory();
+  }
+
+  async function loadTemplate(json: FabricJSON): Promise<void> {
+    const core = editor.value;
+    if (!core) return;
+
+    historySuppression++;
+    try {
+      await core.loadTemplate(json);
+      ensureWorkspace(core);
+      ensureAllObjectIds(core);
+      const extendedObjects = getCanvasDrawableObjects(core)
+        .filter((obj) => Boolean((obj as any).extensionType));
+      for (const obj of extendedObjects) {
+        await refreshExtendedObject(obj);
+      }
+      core.fabricCanvas.discardActiveObject();
+      selectedObject.value = null;
+      selectionVersion.value++;
       core.fabricCanvas.renderAll();
+    } finally {
+      historySuppression--;
     }
+
+    resetHistoryToCurrent();
+  }
+
+  async function undo(): Promise<void> {
+    if (!canUndo.value) return;
+    const targetIndex = historyIndex.value - 1;
+    await restoreHistoryState(historyStack.value[targetIndex]);
+    historyIndex.value = targetIndex;
+  }
+
+  async function redo(): Promise<void> {
+    if (!canRedo.value) return;
+    const targetIndex = historyIndex.value + 1;
+    await restoreHistoryState(historyStack.value[targetIndex]);
+    historyIndex.value = targetIndex;
+  }
+
+  function deleteSelected(): void {
+    const core = editor.value;
+    if (!core) return;
+    const objects = getActiveDrawableObjects(core);
+    if (!objects.length) return;
+
+    runHistoryMutation(() => {
+      discardActiveSelectionForMutation(core, objects);
+      core.fabricCanvas.discardActiveObject();
+      objects.forEach((obj) => core.fabricCanvas.remove(obj));
+      selectedObject.value = null;
+      core.fabricCanvas.renderAll();
+    });
+  }
+
+  function serializeActiveSelection(): FabricObjectJSON[] {
+    const core = editor.value;
+    if (!core) return [];
+    const objects = getActiveDrawableObjects(core);
+    if (!objects.length) return [];
+
+    discardActiveSelectionForMutation(core, objects);
+    const json = objects.map(serializeObject);
+    selectObjects(core, objects);
+    return json;
+  }
+
+  function copySelected(): void {
+    const json = serializeActiveSelection();
+    if (!json.length) return;
+    clipboardObjects.value = json;
+  }
+
+  async function enlivenObjects(objects: FabricObjectJSON[]): Promise<fabric.Object[]> {
+    return fabric.util.enlivenObjects<fabric.Object>(cloneJson(objects));
+  }
+
+  async function pasteObjects(objectsJson: FabricObjectJSON[], offset = 10): Promise<void> {
+    const core = editor.value;
+    if (!core || !objectsJson.length) return;
+    const objects = await enlivenObjects(objectsJson);
+    if (!objects.length) return;
+
+    runHistoryMutation(() => {
+      core.fabricCanvas.discardActiveObject();
+      objects.forEach((obj) => {
+        assignFreshObjectId(obj);
+        obj.set({
+          left: Math.round((obj.left ?? 0) + offset),
+          top: Math.round((obj.top ?? 0) + offset),
+        });
+        obj.setCoords();
+        core.fabricCanvas.add(obj);
+      });
+      selectObjects(core, objects);
+      core.fabricCanvas.renderAll();
+    });
+  }
+
+  async function pasteClipboard(): Promise<void> {
+    if (!clipboardObjects.value?.length) return;
+    pasteOffset = pasteOffset >= 80 ? 10 : pasteOffset + 10;
+    await pasteObjects(clipboardObjects.value, pasteOffset);
+  }
+
+  async function duplicateSelected(): Promise<void> {
+    const json = serializeActiveSelection();
+    if (!json.length) return;
+    await pasteObjects(json, 10);
+  }
+
+  function getObjectCanvasIndex(core: EditorCore, obj: fabric.Object): number {
+    return core.fabricCanvas.getObjects().indexOf(obj);
+  }
+
+  function sortByCanvasIndex(core: EditorCore, objects: fabric.Object[], direction: 'asc' | 'desc'): fabric.Object[] {
+    return objects
+      .slice()
+      .sort((a, b) => {
+        const delta = getObjectCanvasIndex(core, a) - getObjectCanvasIndex(core, b);
+        return direction === 'asc' ? delta : -delta;
+      });
+  }
+
+  function moveSelectedLayer(move: LayerMove): void {
+    const core = editor.value;
+    if (!core) return;
+    const objects = getActiveDrawableObjects(core);
+    if (!objects.length) return;
+
+    runHistoryMutation(() => {
+      discardActiveSelectionForMutation(core, objects);
+      const selectedSet = new Set(objects);
+      const canvas = core.fabricCanvas;
+
+      if (move === 'front') {
+        sortByCanvasIndex(core, objects, 'asc').forEach((obj) => {
+          canvas.moveObjectTo(obj, canvas.getObjects().length - 1);
+        });
+      } else if (move === 'back') {
+        sortByCanvasIndex(core, objects, 'desc').forEach((obj) => {
+          canvas.moveObjectTo(obj, 1);
+        });
+      } else if (move === 'forward') {
+        sortByCanvasIndex(core, objects, 'desc').forEach((obj) => {
+          const currentObjects = canvas.getObjects();
+          const index = currentObjects.indexOf(obj);
+          const next = currentObjects[index + 1];
+          if (index >= 0 && index < currentObjects.length - 1 && !selectedSet.has(next)) {
+            canvas.moveObjectTo(obj, index + 1);
+          }
+        });
+      } else {
+        sortByCanvasIndex(core, objects, 'asc').forEach((obj) => {
+          const currentObjects = canvas.getObjects();
+          const index = currentObjects.indexOf(obj);
+          const previous = currentObjects[index - 1];
+          if (index > 1 && !selectedSet.has(previous)) {
+            canvas.moveObjectTo(obj, index - 1);
+          }
+        });
+      }
+
+      selectObjects(core, objects);
+      canvas.renderAll();
+    });
+  }
+
+  function bringSelectedForward(): void {
+    moveSelectedLayer('forward');
+  }
+
+  function sendSelectedBackward(): void {
+    moveSelectedLayer('backward');
+  }
+
+  function bringSelectedToFront(): void {
+    moveSelectedLayer('front');
+  }
+
+  function sendSelectedToBack(): void {
+    moveSelectedLayer('back');
+  }
+
+  function getObjectsBounds(objects: fabric.Object[]): {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    centerX: number;
+    centerY: number;
+  } {
+    const rects = objects.map((obj) => obj.getBoundingRect());
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.left + rect.width));
+    const bottom = Math.max(...rects.map((rect) => rect.top + rect.height));
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      centerX: left + (right - left) / 2,
+      centerY: top + (bottom - top) / 2,
+    };
+  }
+
+  function alignSelectedHorizontal(alignment: HorizontalAlignment): void {
+    const core = editor.value;
+    if (!core) return;
+    const objects = getActiveDrawableObjects(core);
+    if (!objects.length) return;
+
+    runHistoryMutation(() => {
+      discardActiveSelectionForMutation(core, objects);
+      const reference = objects.length > 1
+        ? getObjectsBounds(objects)
+        : {
+            left: 0,
+            top: 0,
+            right: core.canvasWidth,
+            bottom: core.canvasHeight,
+            centerX: core.canvasWidth / 2,
+            centerY: core.canvasHeight / 2,
+          };
+
+      objects.forEach((obj) => {
+        const rect = obj.getBoundingRect();
+        const targetDelta = alignment === 'left'
+          ? reference.left - rect.left
+          : alignment === 'center'
+            ? reference.centerX - (rect.left + rect.width / 2)
+            : reference.right - (rect.left + rect.width);
+        obj.set('left', Math.round((obj.left ?? 0) + targetDelta));
+        obj.setCoords();
+      });
+
+      selectObjects(core, objects);
+      core.fabricCanvas.renderAll();
+    });
+  }
+
+  function alignSelectedVertical(alignment: VerticalAlignment): void {
+    const core = editor.value;
+    if (!core) return;
+    const objects = getActiveDrawableObjects(core);
+    if (!objects.length) return;
+
+    runHistoryMutation(() => {
+      discardActiveSelectionForMutation(core, objects);
+      const reference = objects.length > 1
+        ? getObjectsBounds(objects)
+        : {
+            left: 0,
+            top: 0,
+            right: core.canvasWidth,
+            bottom: core.canvasHeight,
+            centerX: core.canvasWidth / 2,
+            centerY: core.canvasHeight / 2,
+          };
+
+      objects.forEach((obj) => {
+        const rect = obj.getBoundingRect();
+        const targetDelta = alignment === 'top'
+          ? reference.top - rect.top
+          : alignment === 'middle'
+            ? reference.centerY - (rect.top + rect.height / 2)
+            : reference.bottom - (rect.top + rect.height);
+        obj.set('top', Math.round((obj.top ?? 0) + targetDelta));
+        obj.setCoords();
+      });
+
+      selectObjects(core, objects);
+      core.fabricCanvas.renderAll();
+    });
+  }
+
+  function isObjectLocked(obj: fabric.Object): boolean {
+    return Boolean(
+      (obj as any).locked
+      ||
+      (obj as any).lockMovementX
+      || (obj as any).lockMovementY
+      || (obj as any).lockScalingX
+      || (obj as any).lockScalingY
+      || (obj as any).lockRotation
+    );
+  }
+
+  function setObjectLocked(obj: fabric.Object, locked: boolean): void {
+    (obj as any).locked = locked;
+    obj.set({
+      lockMovementX: locked,
+      lockMovementY: locked,
+      lockScalingX: locked,
+      lockScalingY: locked,
+      lockRotation: locked,
+      lockSkewingX: locked,
+      lockSkewingY: locked,
+      hasControls: !locked,
+      hoverCursor: locked ? 'not-allowed' : 'move',
+    } as any);
+    if ('editable' in obj) {
+      obj.set('editable' as any, !locked);
+    }
+    obj.setCoords();
+  }
+
+  function toggleLockSelected(): void {
+    const core = editor.value;
+    if (!core) return;
+    const objects = getActiveDrawableObjects(core);
+    if (!objects.length) return;
+    const shouldLock = !objects.every(isObjectLocked);
+
+    runHistoryMutation(() => {
+      discardActiveSelectionForMutation(core, objects);
+      objects.forEach((obj) => setObjectLocked(obj, shouldLock));
+      selectObjects(core, objects);
+      core.fabricCanvas.renderAll();
+    });
   }
 
   /** Get TEXT extension data from selected object */
@@ -667,6 +1352,10 @@ export const useEditorStore = defineStore('editor', () => {
     editor.value = null;
     isReady.value = false;
     selectedObject.value = null;
+    historyStack.value = [];
+    historyIndex.value = -1;
+    clipboardObjects.value = null;
+    selectionVersion.value++;
   }
 
   return {
@@ -676,7 +1365,13 @@ export const useEditorStore = defineStore('editor', () => {
     savePayload,
     isSaving,
     saveError,
+    canUndo,
+    canRedo,
+    hasClipboard,
+    hasActiveSelection,
+    isActiveSelectionLocked,
     initEditor,
+    loadTemplate,
     getPalette,
     addRect,
     addLine,
@@ -688,6 +1383,19 @@ export const useEditorStore = defineStore('editor', () => {
     addQrcode,
     addBarcode,
     updateObjectProp,
+    undo,
+    redo,
+    deleteSelected,
+    copySelected,
+    pasteClipboard,
+    duplicateSelected,
+    bringSelectedForward,
+    sendSelectedBackward,
+    bringSelectedToFront,
+    sendSelectedToBack,
+    alignSelectedHorizontal,
+    alignSelectedVertical,
+    toggleLockSelected,
     getTextExtension,
     getImageExtension,
     getPriceExtension,

@@ -12,22 +12,60 @@ const canvasRef = ref<HTMLCanvasElement>();
 const editorStore = useEditorStore();
 const isRendering = ref(false);
 let detachPreviewListeners: (() => void) | null = null;
+let renderingTimeout: ReturnType<typeof setTimeout> | null = null;
+const RENDERING_TIMEOUT_MS = 5000;
+
+function clearRenderingTimeout() {
+  if (!renderingTimeout) return;
+  clearTimeout(renderingTimeout);
+  renderingTimeout = null;
+}
+
+function stopRendering() {
+  clearRenderingTimeout();
+  isRendering.value = false;
+}
+
+function startRendering() {
+  clearRenderingTimeout();
+  isRendering.value = true;
+  renderingTimeout = setTimeout(() => {
+    renderingTimeout = null;
+    if (!isRendering.value) return;
+
+    isRendering.value = false;
+    console.warn(
+      '[PreviewCanvas] E-ink preview render timed out; resetting loading state.'
+    );
+  }, RENDERING_TIMEOUT_MS);
+}
 
 function updatePreview(imageData: ImageData) {
-  const ctx = canvasRef.value?.getContext('2d');
-  if (!ctx) return;
-  ctx.putImageData(imageData, 0, 0);
-  isRendering.value = false;
+  try {
+    const ctx = canvasRef.value?.getContext('2d');
+    if (!ctx) {
+      console.warn(
+        '[PreviewCanvas] Unable to draw E-ink preview: canvas is not ready.'
+      );
+      return;
+    }
+    ctx.putImageData(imageData, 0, 0);
+  } catch (error) {
+    console.warn('[PreviewCanvas] Failed to draw E-ink preview.', error);
+  } finally {
+    stopRendering();
+  }
 }
 
 function bindPreviewListeners(editor: EditorCore | null) {
   detachPreviewListeners?.();
   detachPreviewListeners = null;
+  stopRendering();
 
   if (!editor) return;
 
   const handleCanvasRendered = () => {
-    isRendering.value = true;
+    startRendering();
   };
 
   editor.events.on('eink:preview-updated', updatePreview);
@@ -53,6 +91,7 @@ watch(
 onUnmounted(() => {
   detachPreviewListeners?.();
   detachPreviewListeners = null;
+  stopRendering();
 });
 </script>
 

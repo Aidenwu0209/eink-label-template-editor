@@ -4,6 +4,7 @@
 import type { BootConfig, FabricJSON } from '@/boot/types';
 import type { EventBus } from './EventBus';
 import type { EditorCore } from './EditorCore';
+import type * as fabric from 'fabric';
 
 /** Plugin lifecycle hooks */
 export interface PluginHooks {

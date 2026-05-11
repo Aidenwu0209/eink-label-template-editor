@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { fabric } from 'fabric';
+import { computed, ref } from 'vue';
+import type * as fabric from 'fabric';
 import PaletteColorPicker from '@/components/common/PaletteColorPicker.vue';
-import { TEXT_BINDABLE_FIELDS } from '@/fields';
+import { filterValidCustomFieldIds, TEXT_BINDABLE_FIELDS } from '@/fields';
 import { TEXT_OVERFLOW_MODES, IMAGE_FIT_MODES, QRCODE_ERROR_CORRECTIONS } from '@/stores/editorStore';
 import type { TextExtension, TextOverflowMode, ImageExtension, ImageFitMode, PriceExtension, DiscountExtension, QrcodeExtension, QrcodeErrorCorrection, BarcodeExtension } from '@/stores/editorStore';
 import type { ColorEntry } from '@/screen/types';
@@ -77,7 +77,7 @@ const textVerticalAlign = computed(() => textExt.value?.verticalAlign ?? 'top');
 const textFieldBinding = computed(() => textExt.value?.fieldBinding ?? '');
 
 const bindableFields = computed(() => {
-  const custom = props.customFields ?? [];
+  const custom = filterValidCustomFieldIds(props.customFields ?? []);
   return [...TEXT_BINDABLE_FIELDS, ...custom];
 });
 
@@ -93,6 +93,11 @@ const imageFitMode = computed<ImageFitMode>(() => imageExt.value?.fitMode ?? 'co
 const imageBgColor = computed(() => imageExt.value?.backgroundColor ?? '#FFFFFF');
 const imageWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
 const imageHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const imageUploadError = ref('');
+const imageLoadError = computed(() => {
+  if (imageExt.value?.loadStatus !== 'error') return '';
+  return imageExt.value.loadError || '图片加载失败';
+});
 
 // PRICE properties
 const priceExt = computed<PriceExtension | null>(() => {
@@ -136,6 +141,7 @@ const qrcodeFgColor = computed(() => qrcodeExt.value?.foregroundColor ?? '#00000
 const qrcodeBgColor = computed(() => qrcodeExt.value?.backgroundColor ?? '#FFFFFF');
 const qrcodeWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
 const qrcodeHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const qrcodeWarnings = computed(() => qrcodeExt.value?.readabilityWarnings ?? []);
 
 // BARCODE properties
 const barcodeExt = computed<BarcodeExtension | null>(() => {
@@ -148,9 +154,34 @@ const barcodeFgColor = computed(() => barcodeExt.value?.foregroundColor ?? '#000
 const barcodeBgColor = computed(() => barcodeExt.value?.backgroundColor ?? '#FFFFFF');
 const barcodeWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
 const barcodeHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const barcodeWarnings = computed(() => barcodeExt.value?.readabilityWarnings ?? []);
 
 function updateProp(key: string, value: unknown) {
   emit('update-prop', key, value);
+}
+
+function handleStaticImageFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  imageUploadError.value = '';
+
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    imageUploadError.value = '请选择图片文件';
+    input.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    updateProp('ext.src', String(reader.result ?? ''));
+    input.value = '';
+  };
+  reader.onerror = () => {
+    imageUploadError.value = reader.error?.message || '读取图片文件失败';
+    input.value = '';
+  };
+  reader.readAsDataURL(file);
 }
 </script>
 
@@ -696,6 +727,20 @@ function updateProp(key: string, value: unknown) {
         />
       </div>
 
+      <div class="prop-group" v-if="imageSource === 'static'">
+        <label class="prop-label">上传图片</label>
+        <input
+          type="file"
+          class="prop-input"
+          accept="image/*"
+          @change="handleStaticImageFileChange"
+        />
+        <div class="prop-hint">上传后会保存为 DataURL。</div>
+        <div v-if="imageUploadError" class="prop-error">{{ imageUploadError }}</div>
+      </div>
+
+      <div v-if="imageLoadError" class="prop-error">{{ imageLoadError }}</div>
+
       <div class="prop-group" v-if="imageSource === 'dynamic'">
         <label class="prop-label">绑定字段</label>
         <input
@@ -794,6 +839,10 @@ function updateProp(key: string, value: unknown) {
         />
       </div>
 
+      <div v-if="qrcodeWarnings.length" class="prop-warning">
+        <div v-for="warning in qrcodeWarnings" :key="warning.code">{{ warning.message }}</div>
+      </div>
+
       <PaletteColorPicker
         label="前景色"
         :colors="palette"
@@ -851,6 +900,10 @@ function updateProp(key: string, value: unknown) {
           :value="Math.round(barcodeHeight)"
           @change="updateProp('height', +($event.target as HTMLInputElement).value)"
         />
+      </div>
+
+      <div v-if="barcodeWarnings.length" class="prop-warning">
+        <div v-for="warning in barcodeWarnings" :key="warning.code">{{ warning.message }}</div>
       </div>
 
       <PaletteColorPicker
@@ -929,5 +982,30 @@ function updateProp(key: string, value: unknown) {
 .prop-input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.prop-hint {
+  font-size: 10px;
+  color: #9a9a9a;
+}
+
+.prop-error,
+.prop-warning {
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.prop-error {
+  color: #ffb4a8;
+  background: rgba(255, 99, 71, 0.14);
+  border: 1px solid rgba(255, 99, 71, 0.35);
+}
+
+.prop-warning {
+  color: #ffe1a3;
+  background: rgba(232, 184, 17, 0.14);
+  border: 1px solid rgba(232, 184, 17, 0.35);
 }
 </style>

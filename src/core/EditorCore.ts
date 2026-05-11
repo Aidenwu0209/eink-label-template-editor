@@ -1,4 +1,4 @@
-import { fabric } from 'fabric';
+import * as fabric from 'fabric';
 import { EventBus } from './EventBus';
 import { PluginManager } from './PluginManager';
 import type { BootConfig, FabricJSON } from '@/boot/types';
@@ -11,9 +11,19 @@ const EXTENSION_KEYS = [
   'selectable',
   'hasControls',
   'editable',
+  'evented',
+  'hoverCursor',
+  'lockMovementX',
+  'lockMovementY',
+  'lockScalingX',
+  'lockScalingY',
+  'lockRotation',
+  'lockSkewingX',
+  'lockSkewingY',
   'extensionType',
   'extension',
   'verticalAlign',
+  'locked',
 ];
 
 /**
@@ -153,26 +163,15 @@ export class EditorCore {
       'hookImportBefore',
       json
     );
-    return new Promise<void>((resolve, reject) => {
-      try {
-        this._canvas.loadFromJSON(
-          JSON.stringify(processed),
-          () => {
-            this._canvas.renderAll();
-            this._pluginManager.runHookSync('hookImportAfter', processed);
-            this._eventBus.emit('template:loaded', processed);
-            resolve();
-          }
-        );
-      } catch (err) {
-        reject(err);
-      }
-    });
+    await this._canvas.loadFromJSON(processed);
+    this._canvas.renderAll();
+    await this._pluginManager.runHookSync('hookImportAfter', processed);
+    this._eventBus.emit('template:loaded', processed);
   }
 
   /** Export current canvas state as Fabric JSON */
   async exportJSON(): Promise<FabricJSON> {
-    let json = this._canvas.toJSON(EXTENSION_KEYS) as unknown as FabricJSON;
+    let json = this._canvas.toObject(EXTENSION_KEYS) as unknown as FabricJSON;
     json = await this._pluginManager.runHookWaterfall('hookSaveBefore', json);
     await this._pluginManager.runHookSync('hookSaveAfter', json);
     this._eventBus.emit('template:saved', json);
@@ -197,6 +196,6 @@ export class EditorCore {
     this._disposed = true;
     this._pluginManager.destroyAll();
     this._eventBus.removeAllListeners();
-    this._canvas.dispose();
+    void this._canvas.dispose();
   }
 }

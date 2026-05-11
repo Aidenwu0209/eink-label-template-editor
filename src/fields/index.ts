@@ -4,6 +4,8 @@ export {
   TEXT_BINDABLE_FIELDS,
   validateCustomFieldId,
   isValidCustomFieldId,
+  filterValidCustomFieldIds,
+  getValidCustomFieldIdsFromPreviewData,
 } from './constants';
 export type {
   SystemField,

@@ -2,6 +2,7 @@ import type { IPlugin, PluginContext, EditorEvents } from '@/core/types';
 import type { EventBus } from '@/core/EventBus';
 import type { EditorCore } from '@/core/EditorCore';
 import type { BootConfig } from '@/boot/types';
+import type * as fabric from 'fabric';
 
 type EventHandler<T = any> = (data: T) => void;
 
@@ -31,7 +32,7 @@ export abstract class BasePlugin implements IPlugin {
 
   /** Bind a Fabric canvas event (auto-cleaned on destroy) */
   protected bindCanvas(event: string, handler: (...args: any[]) => void): void {
-    this.canvas.on(event, handler);
+    this.canvas.on(event as any, handler as any);
     this.fabricListeners.push({ event, handler });
   }
 
@@ -46,7 +47,7 @@ export abstract class BasePlugin implements IPlugin {
 
   destroy(): void {
     this.fabricListeners.forEach(({ event, handler }) => {
-      this.canvas.off(event, handler as any);
+      this.canvas.off(event as any, handler as any);
     });
     this.busListeners.forEach(({ event, handler }) => {
       this.eventBus.off(event as any, handler as any);

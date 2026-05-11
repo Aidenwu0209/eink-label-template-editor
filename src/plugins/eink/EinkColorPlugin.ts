@@ -1,4 +1,4 @@
-import { fabric } from 'fabric';
+import * as fabric from 'fabric';
 import { BasePlugin } from '../BasePlugin';
 import type { PluginContext } from '@/core/types';
 import type { ScreenProfile, ColorEntry } from '@/screen/types';
@@ -23,10 +23,10 @@ export class EinkColorPlugin extends BasePlugin {
     super(context);
     this.profile = context.config.screen.profile;
 
-    this.bindCanvas('object:added', (e: fabric.IEvent) => {
+    this.bindCanvas('object:added', (e: { target?: fabric.Object }) => {
       if (e.target) this.constrainObjectColors(e.target);
     });
-    this.bindCanvas('object:modified', (e: fabric.IEvent) => {
+    this.bindCanvas('object:modified', (e: { target?: fabric.Object }) => {
       if (e.target) this.constrainObjectColors(e.target);
     });
   }

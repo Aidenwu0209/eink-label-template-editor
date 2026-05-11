@@ -10,6 +10,11 @@ describe('US-001: 外部初始化数据契约', () => {
 
   beforeEach(() => {
     resolver = new ConfigResolver();
+    delete (globalThis as any).__ESL_EDITOR_INIT__;
+    if (typeof window !== 'undefined') {
+      delete (window as any).__ESL_EDITOR_INIT__;
+      window.history.replaceState(null, '', '/');
+    }
   });
 
   // ═══ AC1: create mode 初始化 ═══
@@ -232,37 +237,17 @@ describe('US-001: 外部初始化数据契约', () => {
       const encoded = btoa(JSON.stringify(payload));
 
       // 模拟 URL search params
-      const originalSearch = window.location.search;
-      Object.defineProperty(window, 'location', {
-        value: { search: `?init=${encoded}` },
-        writable: true,
-      });
+      window.history.replaceState(null, '', `/?init=${encoded}`);
 
       const result = InitDataParser.parse();
       expect(result).toEqual(payload);
-
-      // 恢复
-      Object.defineProperty(window, 'location', {
-        value: { search: originalSearch },
-        writable: true,
-      });
     });
 
     it('无初始化数据时返回 null', () => {
       delete (globalThis as any).__ESL_EDITOR_INIT__;
-
-      const originalSearch = window.location.search;
-      Object.defineProperty(window, 'location', {
-        value: { search: '' },
-        writable: true,
-      });
+      window.history.replaceState(null, '', '/');
 
       expect(InitDataParser.parse()).toBeNull();
-
-      Object.defineProperty(window, 'location', {
-        value: { search: originalSearch },
-        writable: true,
-      });
     });
   });
 
@@ -272,7 +257,7 @@ describe('US-001: 外部初始化数据契约', () => {
     it.each([
       ['BW', 'bw', 2],
       ['BWR', 'tri', 3],
-      ['BWRY', 'tri', 3],
+      ['BWRY', 'bwry', 4],
       ['E6', 'six', 7],
     ] as const)('colorMode=%s → screenType=%s, palette 包含 %d 色',
       (colorMode, expectedType, expectedColors) => {

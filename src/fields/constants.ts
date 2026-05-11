@@ -94,3 +94,35 @@ export function isValidCustomFieldId(
 ): boolean {
   return validateCustomFieldId(id, existingIds).length === 0;
 }
+
+/**
+ * Return only legal custom field IDs, preserving input order and removing duplicates.
+ */
+export function filterValidCustomFieldIds(ids: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const valid: string[] = [];
+
+  for (const id of ids) {
+    if (seen.has(id) || !isValidCustomFieldId(id)) continue;
+    seen.add(id);
+    valid.push(id);
+  }
+
+  return valid;
+}
+
+/**
+ * Extract legal custom text fields from preview data.
+ * System fields are rejected by validateCustomFieldId(), and non-string values are ignored.
+ */
+export function getValidCustomFieldIdsFromPreviewData(
+  previewData?: Record<string, unknown> | null
+): string[] {
+  if (!previewData) return [];
+
+  return filterValidCustomFieldIds(
+    Object.entries(previewData)
+      .filter(([, value]) => typeof value === 'string')
+      .map(([id]) => id)
+  );
+}

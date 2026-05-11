@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { useScreenStore } from '@/stores/screenStore';
 import { useEditorStore } from '@/stores/editorStore';
 import FabricCanvas from '@/components/canvas/FabricCanvas.vue';
 import PreviewCanvas from '@/components/canvas/PreviewCanvas.vue';
 import EditorToolbar from '@/components/toolbar/EditorToolbar.vue';
 import PropertiesPanel from '@/components/panel/PropertiesPanel.vue';
-import { SYSTEM_FIELDS } from '@/fields';
+import { getValidCustomFieldIdsFromPreviewData } from '@/fields';
 
 const screenStore = useScreenStore();
 const editorStore = useEditorStore();
 const config = screenStore.bootConfig!;
 const fabricCanvasRef = ref<InstanceType<typeof FabricCanvas>>();
+const workspaceRef = ref<HTMLElement>();
+const workspaceSize = ref({ width: 0, height: 0 });
+const manualZoom = ref<number | null>(null);
+const showGrid = ref(true);
 
 const screenInfo = computed(() => {
   const p = config.screen.profile;
@@ -21,10 +25,7 @@ const screenInfo = computed(() => {
 
 const palette = computed(() => editorStore.getPalette());
 const customFields = computed(() => {
-  const data = config.previewData ?? {};
-  return Object.keys(data).filter(
-    (key) => !SYSTEM_FIELDS.includes(key as any) && typeof data[key] === 'string'
-  );
+  return getValidCustomFieldIdsFromPreviewData(config.previewData);
 });
 
 const saveMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -40,7 +41,80 @@ async function handleSave() {
   }
 }
 
+function updateWorkspaceSize() {
+  const el = workspaceRef.value;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  workspaceSize.value = { width: rect.width, height: rect.height };
+}
+
+function setZoom(next: number) {
+  manualZoom.value = Math.min(4, Math.max(0.1, Number(next.toFixed(2))));
+}
+
+function zoomIn() {
+  setZoom(canvasScale.value + 0.1);
+}
+
+function zoomOut() {
+  setZoom(canvasScale.value - 0.1);
+}
+
+function resetZoom() {
+  setZoom(1);
+}
+
+function fitZoom() {
+  manualZoom.value = null;
+  updateWorkspaceSize();
+}
+
+function isEditableKeyTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return target.isContentEditable || ['input', 'textarea', 'select'].includes(tagName);
+}
+
+function handleEditorKeydown(event: KeyboardEvent): void {
+  if (isEditableKeyTarget(event.target)) return;
+
+  const key = event.key.toLowerCase();
+  const isModifierPressed = event.metaKey || event.ctrlKey;
+
+  if (!isModifierPressed && !event.altKey && (key === 'delete' || key === 'backspace')) {
+    event.preventDefault();
+    editorStore.deleteSelected();
+    return;
+  }
+
+  if (!isModifierPressed) return;
+
+  if (key === 'z' && event.shiftKey) {
+    event.preventDefault();
+    void editorStore.redo();
+  } else if (key === 'z') {
+    event.preventDefault();
+    void editorStore.undo();
+  } else if (key === 'y') {
+    event.preventDefault();
+    void editorStore.redo();
+  } else if (key === 'c') {
+    event.preventDefault();
+    editorStore.copySelected();
+  } else if (key === 'v') {
+    event.preventDefault();
+    void editorStore.pasteClipboard();
+  } else if (key === 'd') {
+    event.preventDefault();
+    void editorStore.duplicateSelected();
+  }
+}
+
 onMounted(async () => {
+  await nextTick();
+  updateWorkspaceSize();
+  window.addEventListener('resize', updateWorkspaceSize);
+
   const canvasEl = (fabricCanvasRef.value as any)?.canvasElement as HTMLCanvasElement;
   if (!canvasEl) {
     console.error('[EditorView] Canvas element not found');
@@ -50,17 +124,29 @@ onMounted(async () => {
   editorStore.initEditor(canvasEl, config);
 
   if (config.template) {
-    await editorStore.editor!.loadTemplate(config.template.data);
+    await editorStore.loadTemplate(config.template.data);
   }
+
+  window.addEventListener('keydown', handleEditorKeydown);
 });
 
-const canvasScale = computed(() => {
-  const availWidth = (window.innerWidth * 0.38) - 32;
-  const availHeight = window.innerHeight - 140;
+const fitScale = computed(() => {
+  const panelCount = 2;
+  const gap = 16;
+  const propertiesWidth = 220;
+  const horizontalPadding = 32;
+  const headerHeight = 32;
+  const size = workspaceSize.value;
+  const availWidth = Math.max(1, (size.width - propertiesWidth - horizontalPadding - gap * panelCount) / panelCount);
+  const availHeight = Math.max(1, size.height - headerHeight - 24);
   const scaleX = availWidth / config.canvas.width;
   const scaleY = availHeight / config.canvas.height;
   return Math.min(scaleX, scaleY, 1);
 });
+
+const canvasScale = computed(() => manualZoom.value ?? fitScale.value);
+
+const zoomLabel = computed(() => `${Math.round(canvasScale.value * 100)}%`);
 
 const scaledContainerStyle = computed(() => ({
   width: config.canvas.width * canvasScale.value + 'px',
@@ -73,6 +159,8 @@ const canvasTransformStyle = computed(() => ({
 }));
 
 onUnmounted(() => {
+  window.removeEventListener('resize', updateWorkspaceSize);
+  window.removeEventListener('keydown', handleEditorKeydown);
   editorStore.dispose();
 });
 </script>
@@ -86,6 +174,11 @@ onUnmounted(() => {
       </div>
       <div class="toolbar-center">
         <EditorToolbar
+          :can-undo="editorStore.canUndo"
+          :can-redo="editorStore.canRedo"
+          :has-selection="editorStore.hasActiveSelection"
+          :has-clipboard="editorStore.hasClipboard"
+          :is-selection-locked="editorStore.isActiveSelectionLocked"
           @add-rect="editorStore.addRect()"
           @add-line="editorStore.addLine()"
           @add-text="editorStore.addText()"
@@ -95,9 +188,40 @@ onUnmounted(() => {
           @add-dynamic-image="editorStore.addDynamicImage()"
           @add-qrcode="editorStore.addQrcode()"
           @add-barcode="editorStore.addBarcode()"
+          @undo="editorStore.undo()"
+          @redo="editorStore.redo()"
+          @delete="editorStore.deleteSelected()"
+          @copy="editorStore.copySelected()"
+          @paste="editorStore.pasteClipboard()"
+          @duplicate="editorStore.duplicateSelected()"
+          @bring-forward="editorStore.bringSelectedForward()"
+          @send-backward="editorStore.sendSelectedBackward()"
+          @bring-front="editorStore.bringSelectedToFront()"
+          @send-back="editorStore.sendSelectedToBack()"
+          @align-left="editorStore.alignSelectedHorizontal('left')"
+          @align-center="editorStore.alignSelectedHorizontal('center')"
+          @align-right="editorStore.alignSelectedHorizontal('right')"
+          @align-top="editorStore.alignSelectedVertical('top')"
+          @align-middle="editorStore.alignSelectedVertical('middle')"
+          @align-bottom="editorStore.alignSelectedVertical('bottom')"
+          @toggle-lock="editorStore.toggleLockSelected()"
         />
       </div>
       <div class="toolbar-right">
+        <div class="zoom-controls" aria-label="画布缩放控制">
+          <button class="toolbar-btn compact" title="适配窗口" @click="fitZoom">适配</button>
+          <button class="toolbar-btn icon" title="缩小" @click="zoomOut">−</button>
+          <span class="zoom-label">{{ zoomLabel }}</span>
+          <button class="toolbar-btn icon" title="放大" @click="zoomIn">+</button>
+          <button class="toolbar-btn compact" title="重置为 100%" @click="resetZoom">100%</button>
+          <button
+            :class="['toolbar-btn', 'compact', { active: showGrid }]"
+            title="显示或隐藏网格"
+            @click="showGrid = !showGrid"
+          >
+            网格
+          </button>
+        </div>
         <span class="screen-info">{{ screenInfo }}</span>
         <button class="toolbar-btn primary" :disabled="editorStore.isSaving" @click="handleSave">
           {{ editorStore.isSaving ? '保存中...' : '保存' }}
@@ -106,10 +230,10 @@ onUnmounted(() => {
     </header>
 
     <!-- Main workspace -->
-    <main class="editor-workspace">
+    <main ref="workspaceRef" class="editor-workspace">
       <div class="canvas-panel edit-panel">
         <div class="panel-header">编辑画布</div>
-        <div class="canvas-container" :style="scaledContainerStyle">
+        <div :class="['canvas-container', { 'show-grid': showGrid }]" :style="scaledContainerStyle">
           <div :style="canvasTransformStyle">
             <FabricCanvas
               ref="fabricCanvasRef"
@@ -182,10 +306,27 @@ onUnmounted(() => {
   -webkit-text-fill-color: transparent;
 }
 
+.toolbar-left,
+.toolbar-right {
+  flex: 0 0 auto;
+}
+
+.toolbar-center {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 12px;
+}
+
 .toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .screen-info {
@@ -205,6 +346,34 @@ onUnmounted(() => {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+.toolbar-btn.compact {
+  padding: 5px 8px;
+}
+
+.toolbar-btn.icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.toolbar-btn.active {
+  border-color: #4fc3f7;
+  color: #fff;
+  background: #263947;
+}
+
+.zoom-label {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+  color: #aaa;
 }
 
 .toolbar-btn:hover {
@@ -256,6 +425,14 @@ onUnmounted(() => {
   border: 1px solid #2a2a2a;
   border-radius: 0 0 4px 4px;
   background: #1a1a1a;
+}
+
+.canvas-container.show-grid {
+  background-color: #1a1a1a;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 10px 10px;
 }
 
 .canvas-container :deep(.canvas-container) {

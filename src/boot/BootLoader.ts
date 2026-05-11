@@ -48,7 +48,7 @@ export class BootLoader {
       }
 
       // ═══ Legacy URL params path ═══
-      const urlParams = UrlParamParser.parse(window.location.search);
+      const urlParams = UrlParamParser.parse(getLocationSearch());
       this.transition(BootPhase.PARSING, 25);
 
       // ═══ Phase 2: Load remote data ═══
@@ -91,4 +91,13 @@ export class BootLoader {
     this.state.phase = phase;
     this.state.progress = progress;
   }
+}
+
+function getLocationSearch(): string {
+  const runtime = globalThis as {
+    location?: { search?: string };
+    window?: { location?: { search?: string } };
+  };
+
+  return runtime.window?.location?.search ?? runtime.location?.search ?? '';
 }

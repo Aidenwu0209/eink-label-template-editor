@@ -1,8 +1,9 @@
-import { fabric } from 'fabric';
+import * as fabric from 'fabric';
 import QRCode from 'qrcode';
 import type { BootConfig } from '@/boot/types';
 import type {
   BarcodeExtension,
+  ComponentWarning,
   DiscountExtension,
   ImageExtension,
   PriceExtension,
@@ -15,6 +16,10 @@ export interface VisualBounds {
   width: number;
   height: number;
 }
+
+const MIN_QR_MODULE_PIXELS = 2;
+const MIN_BARCODE_MODULE_PIXELS = 1.5;
+const LONG_BARCODE_CONTENT_LENGTH = 32;
 
 const CODE128_PATTERNS = [
   '212222', '222122', '222221', '121223', '121322', '131222', '122213', '122312',
@@ -161,28 +166,37 @@ export async function createImageVisual(bounds: VisualBounds, ext: ImageExtensio
       evented: false,
     }),
   ];
+  let loadStatus: ImageExtension['loadStatus'] = ext.src ? 'error' : 'empty';
+  let loadError: string | null = null;
 
   if (ext.src) {
-    const image = await loadFabricImage(ext.src).catch(() => null);
+    const image = await loadFabricImage(ext.src).catch(() => {
+      loadError = '图片加载失败，请检查图片地址或文件内容';
+      return null;
+    });
     if (image) {
       fitImage(image, bounds, ext.fitMode);
       objects.push(image);
+      loadStatus = 'loaded';
+    } else {
+      addImagePlaceholder(objects, bounds, '图片加载失败', '请检查地址或重新上传');
     }
   }
 
   if (objects.length === 1) {
-    objects.push(new fabric.Text(ext.source === 'dynamic' ? 'imageUrl' : 'IMAGE', {
-      left: 4,
-      top: Math.max(2, bounds.height / 2 - 6),
-      fontFamily: 'AlibabaPuHuiTi',
-      fontSize: 10,
-      fill: '#000000',
-      selectable: false,
-      evented: false,
-    }));
+    addImagePlaceholder(
+      objects,
+      bounds,
+      ext.source === 'dynamic' ? 'imageUrl 为空' : '未选择图片',
+      ext.source === 'dynamic' ? '等待动态图片地址' : '上传或输入图片地址'
+    );
   }
 
-  return withExtension(new fabric.Group(objects, bounds), 'IMAGE', ext);
+  return withExtension(new fabric.Group(objects, bounds), 'IMAGE', {
+    ...ext,
+    loadStatus,
+    loadError,
+  });
 }
 
 export function createQrcodeVisual(bounds: VisualBounds, content: unknown, ext: QrcodeExtension): fabric.Group {
@@ -223,11 +237,15 @@ export function createQrcodeVisual(bounds: VisualBounds, content: unknown, ext: 
     }
   }
 
-  return withExtension(new fabric.Group(objects, bounds), 'QRCODE', ext);
+  return withExtension(new fabric.Group(objects, bounds), 'QRCODE', {
+    ...ext,
+    readabilityWarnings: getQrcodeReadabilityWarnings(bounds, content, ext),
+  });
 }
 
 export function createBarcodeVisual(bounds: VisualBounds, content: unknown, ext: BarcodeExtension): fabric.Group {
-  const value = sanitizeCode128(String(content ?? ''));
+  const rawValue = String(content ?? '');
+  const value = sanitizeCode128(rawValue);
   const pattern = encodeCode128B(value || ' ');
   const textHeight = ext.showText ? 12 : 0;
   const barHeight = Math.max(1, bounds.height - textHeight);
@@ -260,7 +278,63 @@ export function createBarcodeVisual(bounds: VisualBounds, content: unknown, ext:
     }));
   }
 
-  return withExtension(new fabric.Group(objects, bounds), 'BARCODE', ext);
+  return withExtension(new fabric.Group(objects, bounds), 'BARCODE', {
+    ...ext,
+    readabilityWarnings: getBarcodeReadabilityWarnings(bounds, rawValue),
+  });
+}
+
+export function getQrcodeReadabilityWarnings(
+  bounds: VisualBounds,
+  content: unknown,
+  ext: QrcodeExtension
+): ComponentWarning[] {
+  const value = String(content ?? '');
+  const qr = QRCode.create(value || ' ', { errorCorrectionLevel: ext.errorCorrection });
+  const margin = Math.max(0, Math.round(ext.margin));
+  const totalModules = qr.modules.size + margin * 2;
+  const minSide = Math.min(bounds.width, bounds.height);
+  const modulePixels = minSide / totalModules;
+
+  if (modulePixels >= MIN_QR_MODULE_PIXELS) return [];
+
+  const recommendedSize = Math.ceil(totalModules * MIN_QR_MODULE_PIXELS);
+  return [{
+    code: 'qrcode-too-small',
+    severity: 'warning',
+    message: `二维码偏小：当前每格约 ${modulePixels.toFixed(1)}px，建议尺寸至少 ${recommendedSize}×${recommendedSize}px。`,
+  }];
+}
+
+export function getBarcodeReadabilityWarnings(
+  bounds: VisualBounds,
+  content: unknown
+): ComponentWarning[] {
+  const rawValue = String(content ?? '');
+  const value = sanitizeCode128(rawValue);
+  const encodedValue = value || ' ';
+  const pattern = encodeCode128B(encodedValue);
+  const totalModules = pattern.reduce((sum, n) => sum + n, 0);
+  const modulePixels = bounds.width / totalModules;
+  const warnings: ComponentWarning[] = [];
+
+  if (modulePixels < MIN_BARCODE_MODULE_PIXELS) {
+    warnings.push({
+      code: 'barcode-too-narrow',
+      severity: 'warning',
+      message: `条码宽度偏窄：当前最细条约 ${modulePixels.toFixed(1)}px，建议宽度至少 ${Math.ceil(totalModules * MIN_BARCODE_MODULE_PIXELS)}px。`,
+    });
+  }
+
+  if (value.length > LONG_BARCODE_CONTENT_LENGTH || rawValue.length > LONG_BARCODE_CONTENT_LENGTH) {
+    warnings.push({
+      code: 'barcode-content-too-long',
+      severity: 'warning',
+      message: `条码内容较长：当前 ${rawValue.length} 字符，建议不超过 ${LONG_BARCODE_CONTENT_LENGTH} 字符或继续加宽。`,
+    });
+  }
+
+  return warnings;
 }
 
 function withExtension<T extends fabric.Object>(obj: T, type: string, extension: unknown): T {
@@ -275,17 +349,43 @@ function verticalTextTop(height: number, fontSize: number, align: DiscountExtens
   return 2;
 }
 
-function loadFabricImage(src: string): Promise<fabric.Image> {
-  return new Promise((resolve, reject) => {
-    fabric.Image.fromURL(
-      src,
-      (img) => (img ? resolve(img) : reject(new Error('Image load failed'))),
-      { crossOrigin: 'anonymous' }
-    );
-  });
+function loadFabricImage(src: string): Promise<fabric.FabricImage> {
+  return fabric.FabricImage.fromURL(src, { crossOrigin: 'anonymous' });
 }
 
-function fitImage(image: fabric.Image, bounds: VisualBounds, fitMode: ImageExtension['fitMode']): void {
+function addImagePlaceholder(
+  objects: fabric.Object[],
+  bounds: VisualBounds,
+  title: string,
+  subtitle: string
+): void {
+  const top = Math.max(2, bounds.height / 2 - 14);
+  objects.push(new fabric.Textbox(title, {
+    left: 4,
+    top,
+    width: Math.max(1, bounds.width - 8),
+    fontFamily: 'AlibabaPuHuiTi',
+    fontSize: 10,
+    fontWeight: 'bold',
+    fill: '#000000',
+    textAlign: 'center',
+    selectable: false,
+    evented: false,
+  }));
+  objects.push(new fabric.Textbox(subtitle, {
+    left: 4,
+    top: top + 13,
+    width: Math.max(1, bounds.width - 8),
+    fontFamily: 'AlibabaPuHuiTi',
+    fontSize: 8,
+    fill: '#000000',
+    textAlign: 'center',
+    selectable: false,
+    evented: false,
+  }));
+}
+
+function fitImage(image: fabric.FabricImage, bounds: VisualBounds, fitMode: ImageExtension['fitMode']): void {
   const iw = image.width || 1;
   const ih = image.height || 1;
   const sx = bounds.width / iw;
@@ -306,7 +406,7 @@ function createBarcodeImage(
   width: number,
   height: number,
   ext: BarcodeExtension
-): fabric.Image {
+): fabric.FabricImage {
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(width));
   canvas.height = Math.max(1, Math.round(height));
@@ -329,7 +429,7 @@ function createBarcodeImage(
     cursor = next;
   });
 
-  return new fabric.Image(canvas, {
+  return new fabric.FabricImage(canvas, {
     left: 0,
     top: 0,
     selectable: false,
