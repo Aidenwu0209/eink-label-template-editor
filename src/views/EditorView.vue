@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useScreenStore } from '@/stores/screenStore';
-import { useEditorStore } from '@/stores/editorStore';
+import { useEditorStore, type ToolKind } from '@/stores/editorStore';
 import FabricCanvas from '@/components/canvas/FabricCanvas.vue';
 import PreviewCanvas from '@/components/canvas/PreviewCanvas.vue';
 import EditorToolbar from '@/components/toolbar/EditorToolbar.vue';
@@ -21,20 +21,37 @@ type LocalTemplateRecord = {
 type InspectorTab = 'properties' | 'layers' | 'palette';
 
 const LOCAL_TEMPLATE_STORAGE_KEY = 'eink-label-template-editor.localTemplates.v1';
+const TOOLBOX_WIDTH_STORAGE_KEY = 'eink-label-template-editor.toolboxWidth.v1';
+const TOOLBOX_COLLAPSED_STORAGE_KEY = 'eink-label-template-editor.toolboxCollapsed.v1';
+const RECENT_TOOLS_STORAGE_KEY = 'eink-label-template-editor.recentTools.v1';
+const TOOL_DRAG_MIME = 'application/x-eink-tool';
+const TOOLBOX_DEFAULT_WIDTH = 220;
+const TOOLBOX_COMPACT_WIDTH = 176;
+const TOOLBOX_MIN_WIDTH = 96;
+const TOOLBOX_MAX_WIDTH = 360;
+const TOOLBOX_COLLAPSED_WIDTH = 56;
+const RECENT_TOOL_LIMIT = 6;
 
 const screenStore = useScreenStore();
 const editorStore = useEditorStore();
 const config = screenStore.bootConfig!;
 const fabricCanvasRef = ref<InstanceType<typeof FabricCanvas>>();
+const editorShellRef = ref<HTMLElement>();
 const workspaceRef = ref<HTMLElement>();
 const workspaceSize = ref({ width: 0, height: 0 });
 const manualZoom = ref<number | null>(null);
 const previewManualZoom = ref<number | null>(null);
 const showGrid = ref(true);
 const savedTemplates = ref<LocalTemplateRecord[]>([]);
+const recentTools = ref<ToolKind[]>([]);
 const templateSelectValue = ref('');
 const draggedLayerId = ref<string | null>(null);
 const inspectorTab = ref<InspectorTab>('properties');
+const toolboxWidth = ref(TOOLBOX_DEFAULT_WIDTH);
+const isToolboxCollapsed = ref(false);
+const isToolboxPeekOpen = ref(false);
+const isToolboxResizing = ref(false);
+const isToolDropTarget = ref(false);
 
 const screenInfo = computed(() => {
   const p = config.screen.profile;
@@ -45,6 +62,18 @@ const screenInfo = computed(() => {
 const palette = computed(() => editorStore.getPalette());
 const customFields = computed(() => {
   return getValidCustomFieldIdsFromPreviewData(config.previewData);
+});
+const toolboxPanelStyle = computed(() => ({
+  width: `${isToolboxCollapsed.value ? TOOLBOX_COLLAPSED_WIDTH : toolboxWidth.value}px`,
+  '--toolbox-expanded-width': `${toolboxWidth.value}px`,
+}));
+const collapsedToolShortcuts = computed(() => {
+  const fallback: ToolKind[] = ['PRICE', 'DISCOUNT', 'BARCODE', 'TEXT'];
+  const ordered = [...recentTools.value, ...fallback];
+  return Array.from(new Set(ordered)).slice(0, 4).map((kind) => ({
+    kind,
+    ...TOOL_LABELS[kind],
+  }));
 });
 
 const saveMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -57,6 +86,18 @@ const OBJECT_TYPE_LABELS: Record<string, string> = {
   IMAGE: '图片',
   QRCODE: '二维码',
   BARCODE: '条形码',
+};
+
+const TOOL_LABELS: Record<ToolKind, { label: string; mark: string }> = {
+  RECT: { label: '矩形框', mark: '□' },
+  LINE: { label: '直线', mark: '/' },
+  TEXT: { label: '文本', mark: 'T' },
+  PRICE: { label: '价格', mark: '¥' },
+  DISCOUNT: { label: '折扣', mark: '%' },
+  IMAGE_STATIC: { label: '上传图片', mark: 'IMG' },
+  IMAGE_DYNAMIC: { label: '图片字段', mark: 'D' },
+  QRCODE: { label: '二维码', mark: 'QR' },
+  BARCODE: { label: '条形码', mark: 'BAR' },
 };
 
 const selectedObjectType = computed(() => {
@@ -113,6 +154,46 @@ function persistLocalTemplates(): void {
   localStorage.setItem(LOCAL_TEMPLATE_STORAGE_KEY, JSON.stringify(savedTemplates.value.slice(0, 20)));
 }
 
+function clampToolboxWidth(value: number): number {
+  return Math.min(TOOLBOX_MAX_WIDTH, Math.max(TOOLBOX_MIN_WIDTH, Math.round(value)));
+}
+
+function loadEditorUiPreferences(): void {
+  const storedWidth = Number(localStorage.getItem(TOOLBOX_WIDTH_STORAGE_KEY));
+  if (Number.isFinite(storedWidth) && storedWidth > 0) {
+    toolboxWidth.value = clampToolboxWidth(storedWidth);
+  } else if (window.innerWidth <= 1100) {
+    toolboxWidth.value = TOOLBOX_COMPACT_WIDTH;
+  }
+
+  const storedCollapsed = localStorage.getItem(TOOLBOX_COLLAPSED_STORAGE_KEY);
+  isToolboxCollapsed.value = storedCollapsed == null
+    ? window.innerWidth <= 820
+    : storedCollapsed === 'true';
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENT_TOOLS_STORAGE_KEY) ?? '[]');
+    if (Array.isArray(parsed)) {
+      recentTools.value = parsed.filter((kind): kind is ToolKind => kind in TOOL_LABELS).slice(0, RECENT_TOOL_LIMIT);
+    }
+  } catch {
+    recentTools.value = [];
+  }
+}
+
+function persistToolboxWidth(): void {
+  localStorage.setItem(TOOLBOX_WIDTH_STORAGE_KEY, String(toolboxWidth.value));
+}
+
+function persistToolboxCollapsed(): void {
+  localStorage.setItem(TOOLBOX_COLLAPSED_STORAGE_KEY, String(isToolboxCollapsed.value));
+}
+
+function rememberTool(kind: ToolKind): void {
+  recentTools.value = [kind, ...recentTools.value.filter((item) => item !== kind)].slice(0, RECENT_TOOL_LIMIT);
+  localStorage.setItem(RECENT_TOOLS_STORAGE_KEY, JSON.stringify(recentTools.value));
+}
+
 function formatTemplateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
@@ -150,6 +231,122 @@ async function applyLocalTemplateById(event: Event): Promise<void> {
 function deleteLocalTemplate(id: string): void {
   savedTemplates.value = savedTemplates.value.filter((item) => item.id !== id);
   persistLocalTemplates();
+}
+
+async function handleAddTool(kind: ToolKind): Promise<void> {
+  await editorStore.addElement(kind);
+  rememberTool(kind);
+  isToolboxPeekOpen.value = false;
+}
+
+function handleToolDragStart(kind: ToolKind, event: DragEvent): void {
+  if (!event.dataTransfer) return;
+  event.dataTransfer.effectAllowed = 'copy';
+  event.dataTransfer.setData(TOOL_DRAG_MIME, JSON.stringify({ kind }));
+  event.dataTransfer.setData('text/plain', kind);
+  (event.currentTarget as HTMLElement | null)?.addEventListener('dragend', () => {
+    isToolDropTarget.value = false;
+  }, { once: true });
+}
+
+function parseDraggedTool(event: DragEvent): ToolKind | null {
+  const raw = event.dataTransfer?.getData(TOOL_DRAG_MIME);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.kind in TOOL_LABELS) return parsed.kind;
+    } catch {
+      return null;
+    }
+  }
+
+  const fallback = event.dataTransfer?.getData('text/plain');
+  return fallback && fallback in TOOL_LABELS ? fallback as ToolKind : null;
+}
+
+function hasToolDragPayload(event: DragEvent): boolean {
+  const types = Array.from(event.dataTransfer?.types ?? []);
+  return types.includes(TOOL_DRAG_MIME);
+}
+
+function getCanvasDropPosition(event: DragEvent): { left: number; top: number } | null {
+  const canvasEl = (fabricCanvasRef.value as any)?.canvasElement as HTMLCanvasElement | undefined;
+  if (!canvasEl) return null;
+  const rect = canvasEl.getBoundingClientRect();
+  return {
+    left: Math.round((event.clientX - rect.left) / canvasScale.value),
+    top: Math.round((event.clientY - rect.top) / canvasScale.value),
+  };
+}
+
+function handleStageDragOver(event: DragEvent): void {
+  if (!hasToolDragPayload(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  isToolDropTarget.value = true;
+}
+
+function handleStageDragLeave(event: DragEvent): void {
+  const target = event.currentTarget as HTMLElement | null;
+  const next = event.relatedTarget as Node | null;
+  if (!target || !next || !target.contains(next)) {
+    isToolDropTarget.value = false;
+  }
+}
+
+async function handleStageDrop(event: DragEvent): Promise<void> {
+  const kind = parseDraggedTool(event);
+  if (!kind) {
+    isToolDropTarget.value = false;
+    return;
+  }
+  event.preventDefault();
+  isToolDropTarget.value = false;
+  await editorStore.addElement(kind, getCanvasDropPosition(event) ?? undefined);
+  rememberTool(kind);
+  isToolboxPeekOpen.value = false;
+}
+
+function setToolboxCollapsed(next: boolean): void {
+  isToolboxCollapsed.value = next;
+  isToolboxPeekOpen.value = false;
+  persistToolboxCollapsed();
+  void nextTick(updateWorkspaceSize);
+}
+
+function openToolboxPeek(): void {
+  if (isToolboxCollapsed.value) isToolboxPeekOpen.value = true;
+}
+
+function closeToolboxPeek(): void {
+  if (isToolboxCollapsed.value) isToolboxPeekOpen.value = false;
+}
+
+function stopToolboxResize(): void {
+  if (!isToolboxResizing.value) return;
+  isToolboxResizing.value = false;
+  document.body.style.userSelect = '';
+  document.body.style.cursor = '';
+  window.removeEventListener('mousemove', handleToolboxResizeMove);
+  window.removeEventListener('mouseup', stopToolboxResize);
+  persistToolboxWidth();
+  void nextTick(updateWorkspaceSize);
+}
+
+function handleToolboxResizeMove(event: MouseEvent): void {
+  const shellLeft = editorShellRef.value?.getBoundingClientRect().left ?? 0;
+  toolboxWidth.value = clampToolboxWidth(event.clientX - shellLeft);
+  updateWorkspaceSize();
+}
+
+function startToolboxResize(event: MouseEvent): void {
+  if (isToolboxCollapsed.value) return;
+  event.preventDefault();
+  isToolboxResizing.value = true;
+  document.body.style.userSelect = 'none';
+  document.body.style.cursor = 'col-resize';
+  window.addEventListener('mousemove', handleToolboxResizeMove);
+  window.addEventListener('mouseup', stopToolboxResize);
 }
 
 async function handleSave() {
@@ -275,6 +472,8 @@ function handleEditorKeydown(event: KeyboardEvent): void {
 onMounted(async () => {
   await nextTick();
   loadLocalTemplates();
+  loadEditorUiPreferences();
+  await nextTick();
   updateWorkspaceSize();
   window.addEventListener('resize', updateWorkspaceSize);
 
@@ -354,6 +553,8 @@ watch(
 onUnmounted(() => {
   window.removeEventListener('resize', updateWorkspaceSize);
   window.removeEventListener('keydown', handleEditorKeydown);
+  window.removeEventListener('mousemove', handleToolboxResizeMove);
+  window.removeEventListener('mouseup', stopToolboxResize);
   editorStore.dispose();
 });
 </script>
@@ -409,43 +610,60 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <main class="editor-shell">
-      <aside class="toolbox-panel">
-        <div class="panel-caption">工具</div>
-        <EditorToolbar
-          :can-undo="editorStore.canUndo"
-          :can-redo="editorStore.canRedo"
-          :has-selection="editorStore.hasActiveSelection"
-          :has-clipboard="editorStore.hasClipboard"
-          :is-selection-locked="editorStore.isActiveSelectionLocked"
-          @add-rect="editorStore.addRect()"
-          @add-line="editorStore.addLine()"
-          @add-text="editorStore.addText()"
-          @add-price="editorStore.addPrice()"
-          @add-discount="editorStore.addDiscount()"
-          @add-static-image="editorStore.addStaticImage()"
-          @add-dynamic-image="editorStore.addDynamicImage()"
-          @add-qrcode="editorStore.addQrcode()"
-          @add-barcode="editorStore.addBarcode()"
-          @undo="editorStore.undo()"
-          @redo="editorStore.redo()"
-          @delete="editorStore.deleteSelected()"
-          @copy="editorStore.copySelected()"
-          @paste="editorStore.pasteClipboard()"
-          @duplicate="editorStore.duplicateSelected()"
-          @bring-forward="editorStore.bringSelectedForward()"
-          @send-backward="editorStore.sendSelectedBackward()"
-          @bring-front="editorStore.bringSelectedToFront()"
-          @send-back="editorStore.sendSelectedToBack()"
-          @align-left="editorStore.alignSelectedHorizontal('left')"
-          @align-center="editorStore.alignSelectedHorizontal('center')"
-          @align-right="editorStore.alignSelectedHorizontal('right')"
-          @align-top="editorStore.alignSelectedVertical('top')"
-          @align-middle="editorStore.alignSelectedVertical('middle')"
-          @align-bottom="editorStore.alignSelectedVertical('bottom')"
-          @toggle-lock="editorStore.toggleLockSelected()"
-          @apply-starter-template="editorStore.applyStarterTemplate"
-        />
+    <main ref="editorShellRef" class="editor-shell">
+      <aside
+        :class="[
+          'toolbox-panel',
+          { collapsed: isToolboxCollapsed, peeking: isToolboxPeekOpen, resizing: isToolboxResizing },
+        ]"
+        :style="toolboxPanelStyle"
+        @mouseenter="openToolboxPeek"
+        @mouseleave="closeToolboxPeek"
+      >
+        <div v-if="isToolboxCollapsed" class="toolbox-collapsed-strip" aria-label="折叠工具栏">
+          <button class="collapse-toggle" type="button" title="展开工具栏" @click="setToolboxCollapsed(false)">›</button>
+          <button
+            v-for="tool in collapsedToolShortcuts"
+            :key="tool.kind"
+            class="collapsed-tool-btn"
+            type="button"
+            :title="`添加${tool.label}`"
+            @click="handleAddTool(tool.kind)"
+          >
+            <span>{{ tool.mark }}</span>
+          </button>
+        </div>
+
+        <div :class="['toolbox-expanded', { floating: isToolboxCollapsed }]">
+          <div class="toolbox-header">
+            <div>
+              <span class="panel-caption">工具抽屉</span>
+              <small>{{ isToolboxCollapsed ? '临时浮出' : `${toolboxWidth}px` }}</small>
+            </div>
+            <button
+              class="toolbox-header-btn"
+              type="button"
+              :title="isToolboxCollapsed ? '固定展开工具栏' : '折叠工具栏'"
+              @click="setToolboxCollapsed(!isToolboxCollapsed)"
+            >
+              {{ isToolboxCollapsed ? '固定' : '收起' }}
+            </button>
+          </div>
+          <EditorToolbar
+            :recent-tools="recentTools"
+            @add-tool="handleAddTool"
+            @tool-drag-start="handleToolDragStart"
+            @apply-starter-template="editorStore.applyStarterTemplate"
+          />
+        </div>
+
+        <button
+          v-if="!isToolboxCollapsed"
+          class="toolbox-resize-handle"
+          type="button"
+          title="拖动调整工具栏宽度"
+          @mousedown="startToolboxResize"
+        ></button>
       </aside>
 
       <section class="editor-stage">
@@ -492,7 +710,13 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div ref="workspaceRef" class="stage-viewport">
+        <div
+          ref="workspaceRef"
+          :class="['stage-viewport', { 'is-tool-drop-target': isToolDropTarget }]"
+          @dragover="handleStageDragOver"
+          @dragleave="handleStageDragLeave"
+          @drop="handleStageDrop"
+        >
           <div class="canvas-shadow" :style="scaledContainerStyle">
             <div :class="['canvas-container', { 'show-grid': showGrid }]" :style="scaledContainerStyle">
               <div :style="canvasTransformStyle">
@@ -851,24 +1075,181 @@ onUnmounted(() => {
 }
 
 .toolbox-panel {
-  width: 118px;
+  position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   background: rgba(28, 29, 30, 0.96);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.32);
+  overflow: visible;
+  transition: width 0.18s ease;
+  z-index: 18;
+}
+
+.toolbox-panel.resizing {
+  transition: none;
+}
+
+.toolbox-collapsed-strip {
+  position: relative;
+  z-index: 2;
+  width: 56px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  background: rgba(28, 29, 30, 0.98);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.collapse-toggle,
+.collapsed-tool-btn,
+.toolbox-header-btn {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.collapse-toggle {
+  width: 36px;
+  height: 36px;
+  color: #17130a;
+  background: #f0d35b;
+  border-color: rgba(240, 211, 91, 0.62);
+  border-radius: 12px;
+  font-size: 23px;
+  font-weight: 900;
+}
+
+.collapsed-tool-btn {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #eee7d8;
+  background: linear-gradient(180deg, rgba(62, 63, 63, 0.98), rgba(35, 36, 37, 0.98));
+  border-radius: 12px;
+}
+
+.collapsed-tool-btn span {
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.toolbox-expanded {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(28, 29, 30, 0.98);
   overflow: hidden;
 }
 
-.panel-caption {
+.toolbox-expanded.floating {
+  position: absolute;
+  top: 0;
+  left: 56px;
+  width: var(--toolbox-expanded-width);
+  min-width: 220px;
+  max-width: 360px;
+  border-right: 1px solid rgba(240, 211, 91, 0.24);
+  box-shadow: 18px 0 42px rgba(0, 0, 0, 0.34);
+  transform: translateX(-10px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.toolbox-panel.peeking .toolbox-expanded.floating {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.toolbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 12px 12px 8px;
+  flex-shrink: 0;
+}
+
+.toolbox-header > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.panel-caption {
   color: #a9a197;
   font-size: 11px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  flex-shrink: 0;
+}
+
+.toolbox-header small {
+  color: #eee2c5;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.toolbox-header-btn {
+  flex: 0 0 auto;
+  min-width: 50px;
+  height: 30px;
+  padding: 0 9px;
+  color: #f4ecd9;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.toolbox-header-btn:hover,
+.collapsed-tool-btn:hover,
+.collapse-toggle:hover {
+  color: #fff3bd;
+  border-color: rgba(240, 211, 91, 0.5);
+  background: rgba(240, 211, 91, 0.14);
+}
+
+.toolbox-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  z-index: 4;
+  width: 10px;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: col-resize;
+}
+
+.toolbox-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(240, 211, 91, 0.22);
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.toolbox-resize-handle:hover::after,
+.toolbox-panel.resizing .toolbox-resize-handle::after {
+  opacity: 1;
+  background: rgba(240, 211, 91, 0.68);
 }
 
 .editor-stage {
@@ -1010,6 +1391,30 @@ onUnmounted(() => {
     linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%);
   background-position: 0 0, 0 12px, 12px -12px, -12px 0;
   background-size: 24px 24px;
+}
+
+.stage-viewport.is-tool-drop-target::before {
+  content: '释放以添加元素';
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 8;
+  transform: translateX(-50%);
+  padding: 8px 13px;
+  color: #17130a;
+  background: #f0d35b;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.stage-viewport.is-tool-drop-target .canvas-shadow {
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.48),
+    0 0 0 2px rgba(240, 211, 91, 0.7),
+    0 0 0 10px rgba(240, 211, 91, 0.1);
 }
 
 .canvas-shadow {
@@ -1413,10 +1818,6 @@ onUnmounted(() => {
     display: none;
   }
 
-  .toolbox-panel {
-    width: 110px;
-  }
-
   .inspector-dock {
     width: 286px;
   }
@@ -1430,10 +1831,6 @@ onUnmounted(() => {
 
   .editor-topbar {
     padding-right: 10px;
-  }
-
-  .toolbox-panel {
-    width: 104px;
   }
 
   .inspector-dock {

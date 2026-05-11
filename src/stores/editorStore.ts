@@ -181,6 +181,21 @@ type HorizontalAlignment = 'left' | 'center' | 'right';
 type VerticalAlignment = 'top' | 'middle' | 'bottom';
 type LayerMove = 'forward' | 'backward' | 'front' | 'back';
 export type StarterTemplateKind = 'retail' | 'barcode' | 'qr';
+export type ToolKind =
+  | 'RECT'
+  | 'LINE'
+  | 'TEXT'
+  | 'PRICE'
+  | 'DISCOUNT'
+  | 'IMAGE_STATIC'
+  | 'IMAGE_DYNAMIC'
+  | 'QRCODE'
+  | 'BARCODE';
+
+export interface ToolPosition {
+  left: number;
+  top: number;
+}
 
 interface HistoryState {
   version?: string;
@@ -546,6 +561,22 @@ export const useEditorStore = defineStore('editor', () => {
       : { ...base, left: base.left + offset, top: base.top + offset };
 
     return fitBoundsToCanvas(config, cascaded);
+  }
+
+  function getPresetTypeForTool(kind: ToolKind): PresetElementType {
+    if (kind === 'IMAGE_STATIC' || kind === 'IMAGE_DYNAMIC') return 'IMAGE';
+    return kind;
+  }
+
+  function getToolBounds(core: EditorCore, kind: ToolKind, position?: ToolPosition): VisualBounds {
+    const bounds = getElementPresetBounds(core, getPresetTypeForTool(kind));
+    if (!position) return bounds;
+
+    return fitBoundsToCanvas(core.bootConfig, {
+      ...bounds,
+      left: position.left,
+      top: position.top,
+    });
   }
 
   function getPaletteAccentColors(config: BootConfig): { accent: string; onAccent: string } {
@@ -1027,12 +1058,12 @@ export const useEditorStore = defineStore('editor', () => {
     await refreshExtendedObjectWithBounds(obj, getObjectBounds(obj));
   }
 
-  function addRect(): void {
+  function addRect(position?: ToolPosition): void {
     const core = editor.value;
     if (!core) return;
 
     const config = core.bootConfig;
-    const bounds = getElementPresetBounds(core, 'RECT');
+    const bounds = getToolBounds(core, 'RECT', position);
 
     const rect = new fabric.Rect({
       ...bounds,
@@ -1045,11 +1076,11 @@ export const useEditorStore = defineStore('editor', () => {
     addVisualObject(rect);
   }
 
-  function addLine(): void {
+  function addLine(position?: ToolPosition): void {
     const core = editor.value;
     if (!core) return;
 
-    const bounds = getElementPresetBounds(core, 'LINE');
+    const bounds = getToolBounds(core, 'LINE', position);
     const x1 = bounds.left;
     const y1 = bounds.top;
     const x2 = bounds.left + bounds.width;
@@ -1064,11 +1095,11 @@ export const useEditorStore = defineStore('editor', () => {
     addVisualObject(line);
   }
 
-  function addText(): void {
+  function addText(position?: ToolPosition): void {
     const core = editor.value;
     if (!core) return;
 
-    const bounds = getElementPresetBounds(core, 'TEXT');
+    const bounds = getToolBounds(core, 'TEXT', position);
 
     const text = new fabric.Textbox('商品名称', {
       left: bounds.left,
@@ -1220,12 +1251,12 @@ export const useEditorStore = defineStore('editor', () => {
     });
   }
 
-  function addDiscount(): void {
+  function addDiscount(position?: ToolPosition): void {
     const core = editor.value;
     if (!core) return;
 
     const config = core.bootConfig;
-    const bounds = getElementPresetBounds(core, 'DISCOUNT');
+    const bounds = getToolBounds(core, 'DISCOUNT', position);
     const { accent, onAccent } = getPaletteAccentColors(config);
 
     const ext = {
@@ -1242,12 +1273,12 @@ export const useEditorStore = defineStore('editor', () => {
     addVisualObject(createDiscountVisual(bounds, config.previewData?.discount, ext));
   }
 
-  function addPrice(): void {
+  function addPrice(position?: ToolPosition): void {
     const core = editor.value;
     if (!core) return;
 
     const config = core.bootConfig;
-    const bounds = getElementPresetBounds(core, 'PRICE');
+    const bounds = getToolBounds(core, 'PRICE', position);
     const { accent } = getPaletteAccentColors(config);
 
     const ext = {
@@ -1278,12 +1309,11 @@ export const useEditorStore = defineStore('editor', () => {
     addVisualObject(createPriceVisual(config, bounds, ext));
   }
 
-  async function addStaticImage(): Promise<void> {
+  async function addStaticImage(position?: ToolPosition): Promise<void> {
     const core = editor.value;
     if (!core) return;
 
-    const config = core.bootConfig;
-    const bounds = getElementPresetBounds(core, 'IMAGE');
+    const bounds = getToolBounds(core, 'IMAGE_STATIC', position);
 
     const ext = {
       source: 'static',
@@ -1296,12 +1326,12 @@ export const useEditorStore = defineStore('editor', () => {
     addVisualObject(await createImageVisual(bounds, ext));
   }
 
-  async function addDynamicImage(): Promise<void> {
+  async function addDynamicImage(position?: ToolPosition): Promise<void> {
     const core = editor.value;
     if (!core) return;
 
     const config = core.bootConfig;
-    const bounds = getElementPresetBounds(core, 'IMAGE');
+    const bounds = getToolBounds(core, 'IMAGE_DYNAMIC', position);
 
     const previewUrl = config.previewData?.imageUrl ?? '';
 
@@ -1316,12 +1346,12 @@ export const useEditorStore = defineStore('editor', () => {
     addVisualObject(await createImageVisual(bounds, ext));
   }
 
-  function addQrcode(): void {
+  function addQrcode(position?: ToolPosition): void {
     const core = editor.value;
     if (!core) return;
 
     const config = core.bootConfig;
-    const bounds = getElementPresetBounds(core, 'QRCODE');
+    const bounds = getToolBounds(core, 'QRCODE', position);
 
     const ext = {
       fieldBinding: 'qrContent',
@@ -1334,12 +1364,12 @@ export const useEditorStore = defineStore('editor', () => {
     addVisualObject(createQrcodeVisual(bounds, config.previewData?.qrContent, ext));
   }
 
-  function addBarcode(): void {
+  function addBarcode(position?: ToolPosition): void {
     const core = editor.value;
     if (!core) return;
 
     const config = core.bootConfig;
-    const bounds = getElementPresetBounds(core, 'BARCODE');
+    const bounds = getToolBounds(core, 'BARCODE', position);
 
     const ext = {
       fieldBinding: 'barcodeContent',
@@ -1350,6 +1380,28 @@ export const useEditorStore = defineStore('editor', () => {
     } satisfies BarcodeExtension;
 
     addVisualObject(createBarcodeVisual(bounds, config.previewData?.barcodeContent, ext));
+  }
+
+  async function addElement(kind: ToolKind, position?: ToolPosition): Promise<void> {
+    if (kind === 'RECT') {
+      addRect(position);
+    } else if (kind === 'LINE') {
+      addLine(position);
+    } else if (kind === 'TEXT') {
+      addText(position);
+    } else if (kind === 'PRICE') {
+      addPrice(position);
+    } else if (kind === 'DISCOUNT') {
+      addDiscount(position);
+    } else if (kind === 'IMAGE_STATIC') {
+      await addStaticImage(position);
+    } else if (kind === 'IMAGE_DYNAMIC') {
+      await addDynamicImage(position);
+    } else if (kind === 'QRCODE') {
+      addQrcode(position);
+    } else {
+      addBarcode(position);
+    }
   }
 
   function applyStarterTemplate(kind: StarterTemplateKind): void {
@@ -2062,6 +2114,7 @@ export const useEditorStore = defineStore('editor', () => {
     addDiscount,
     addQrcode,
     addBarcode,
+    addElement,
     applyStarterTemplate,
     clearCanvasObjects,
     updateObjectProp,
