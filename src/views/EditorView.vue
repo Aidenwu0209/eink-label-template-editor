@@ -9,7 +9,7 @@ import EditorToolbar from '@/components/toolbar/EditorToolbar.vue';
 import PropertiesPanel from '@/components/panel/PropertiesPanel.vue';
 import SmartImportDialog from '@/components/ocr/SmartImportDialog.vue';
 import { getValidCustomFieldIdsFromPreviewData, validateCustomFieldId } from '@/fields';
-import type { FabricJSON } from '@/boot/types';
+import type { FabricJSON, SaveExportMode } from '@/boot/types';
 import type { RecognizedPriceTag } from '@/ocr/types';
 import type { SmartTemplateKind } from '@/ocr/templatePlanner';
 import {
@@ -61,6 +61,10 @@ const SCREEN_COLOR_MODES: Array<{ value: ScreenColorMode; labelKey: string }> = 
   { value: 'BWR', labelKey: 'editor.screenColorBWR' },
   { value: 'BWRY', labelKey: 'editor.screenColorBWRY' },
   { value: 'E6', labelKey: 'editor.screenColorE6' },
+];
+const SAVE_EXPORT_MODES: Array<{ value: SaveExportMode; labelKey: string; titleKey: string }> = [
+  { value: 'fabric-json', labelKey: 'editor.saveExportFabricJson', titleKey: 'editor.saveExportFabricJsonHint' },
+  { value: 'static-dynamic', labelKey: 'editor.saveExportStaticDynamic', titleKey: 'editor.saveExportStaticDynamicHint' },
 ];
 
 const screenStore = useScreenStore();
@@ -654,11 +658,29 @@ async function handleSave() {
   try {
     saveMessage.value = null;
     const payload = await editorStore.save();
-    saveMessage.value = { type: 'success', text: t('editor.saveSuccess', { id: payload.templateId }) };
+    saveMessage.value = {
+      type: 'success',
+      text: t('editor.saveSuccessWithMode', {
+        id: payload.templateId,
+        mode: saveExportModeLabel(payload.exportMode),
+      }),
+    };
     setTimeout(() => { saveMessage.value = null; }, 3000);
   } catch (err: any) {
     saveMessage.value = { type: 'error', text: t('editor.saveFailed', { message: err.message ?? t('editor.unknownError') }) };
   }
+}
+
+function handleSaveExportModeChange(event: Event): void {
+  editorStore.setSaveExportMode((event.target as HTMLSelectElement).value as SaveExportMode);
+}
+
+function saveExportModeLabel(mode: string): string {
+  return mode === 'static-dynamic'
+    ? t('editor.saveExportStaticDynamic')
+    : mode === 'both'
+      ? t('editor.saveExportBoth')
+      : t('editor.saveExportFabricJson');
 }
 
 function handleSmartImportApply(payload: { recognized: RecognizedPriceTag; templateKind: SmartTemplateKind }): void {
@@ -1063,6 +1085,23 @@ onUnmounted(() => {
             {{ showGrid ? t('editor.hideGrid') : t('editor.showGrid') }}
           </button>
         </div>
+        <label class="save-mode-control" :title="t('editor.saveExportModeHint')">
+          <span>{{ t('editor.saveExportModeLabel') }}</span>
+          <select
+            :value="editorStore.saveExportMode"
+            class="save-mode-select"
+            @change="handleSaveExportModeChange"
+          >
+            <option
+              v-for="mode in SAVE_EXPORT_MODES"
+              :key="mode.value"
+              :value="mode.value"
+              :title="t(mode.titleKey)"
+            >
+              {{ t(mode.labelKey) }}
+            </option>
+          </select>
+        </label>
         <button class="toolbar-btn primary" :disabled="editorStore.isSaving" @click="handleSave">
           {{ editorStore.isSaving ? t('common.saving') : t('common.save') }}
         </button>
@@ -1673,6 +1712,40 @@ onUnmounted(() => {
 }
 
 .regional-select:focus {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring);
+}
+
+.save-mode-control {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 5px;
+  height: 36px;
+  padding: 3px 4px 3px 8px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(216, 183, 96, 0.16);
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.save-mode-select {
+  width: 132px;
+  height: 28px;
+  padding: 0 22px 0 8px;
+  color: var(--text-strong);
+  background: rgba(8, 9, 11, 0.64);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.save-mode-select:focus {
   outline: none;
   border-color: var(--accent-line);
   box-shadow: var(--focus-ring);

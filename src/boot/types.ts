@@ -9,6 +9,9 @@ import type { LocaleCode, MarketCode, MarketProfile } from '@/i18n/market';
 /** Editor initialization mode */
 export type EditorMode = 'create' | 'edit';
 
+/** Save/export mode requested by the host or selected in the editor UI. */
+export type SaveExportMode = 'fabric-json' | 'static-dynamic';
+
 // ══════════ Init Payload Types ══════════
 
 /** Profile configuration from external system */
@@ -55,6 +58,8 @@ export interface EditorInitPayload {
   onSave?: OnSaveCallback;
   /** Fallback save API URL when onSave is not provided */
   saveApi?: string;
+  /** Optional default save/export mode */
+  saveExportMode?: SaveExportMode;
   /** Optional PaddleOCR API endpoint used by smart image import */
   ocrApi?: string;
   /** Optional initial UI language */
@@ -108,6 +113,8 @@ export interface BootConfig {
   onSave?: OnSaveCallback;
   /** Fallback save API URL when onSave is not provided */
   saveApi?: string;
+  /** Current save/export mode */
+  saveExportMode?: SaveExportMode;
   /** Optional PaddleOCR API endpoint used by smart image import */
   ocrApi?: string;
 }

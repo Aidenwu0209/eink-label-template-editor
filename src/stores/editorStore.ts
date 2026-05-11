@@ -5,7 +5,7 @@ import { EditorCore } from '@/core/EditorCore';
 import { EinkColorPlugin } from '@/plugins/eink/EinkColorPlugin';
 import { EinkRenderPlugin } from '@/plugins/eink/EinkRenderPlugin';
 import { EinkExportPlugin } from '@/plugins/eink/EinkExportPlugin';
-import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData } from '@/boot/types';
+import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData, SaveExportMode } from '@/boot/types';
 import { ScreenType, type ColorEntry, type ScreenProfile } from '@/screen/types';
 import { SCREEN_PROFILES } from '@/screen/profiles';
 import { findNearestColor, hexToRgb } from '@/renderer/colorUtils';
@@ -433,6 +433,7 @@ export const useEditorStore = defineStore('editor', () => {
   const selectedObject = shallowRef<fabric.Object | null>(null);
   const savePayload = ref<SavePayload | null>(null);
   const isSaving = ref(false);
+  const saveExportMode = ref<SaveExportMode>('fabric-json');
   const historyStack = ref<HistoryState[]>([]);
   const historyIndex = ref(-1);
   const clipboardObjects = ref<FabricObjectJSON[] | null>(null);
@@ -487,6 +488,8 @@ export const useEditorStore = defineStore('editor', () => {
   });
 
   function initEditor(el: HTMLCanvasElement, config: BootConfig) {
+    saveExportMode.value = normalizeSaveExportMode(config.saveExportMode);
+    config.saveExportMode = saveExportMode.value;
     const core = new EditorCore(el, config);
     core
       .use(EinkColorPlugin)
@@ -513,6 +516,18 @@ export const useEditorStore = defineStore('editor', () => {
 
   function getPalette(): ColorEntry[] {
     return editor.value?.bootConfig.screen.profile.palette.slice() ?? [];
+  }
+
+  function normalizeSaveExportMode(mode: unknown): SaveExportMode {
+    return mode === 'static-dynamic' ? 'static-dynamic' : 'fabric-json';
+  }
+
+  function setSaveExportMode(mode: SaveExportMode): void {
+    const next = normalizeSaveExportMode(mode);
+    saveExportMode.value = next;
+    if (editor.value) {
+      editor.value.bootConfig.saveExportMode = next;
+    }
   }
 
   function isWorkspaceObject(obj: fabric.Object | null | undefined): boolean {
@@ -2754,13 +2769,39 @@ function historySignature(state: HistoryState): string {
     });
   }
 
+  function isDynamicExportObject(obj: fabric.Object): boolean {
+    const extType = (obj as any).extensionType as string | undefined;
+    const ext = (obj as any).extension as { fieldBinding?: string | null; source?: string | null } | undefined;
+
+    if (extType === 'TEXT') return Boolean(ext?.fieldBinding);
+    if (extType === 'PRICE' || extType === 'DISCOUNT') return true;
+    if (extType === 'IMAGE') return ext?.source === 'dynamic';
+    if (extType === 'QRCODE' || extType === 'BARCODE') return (ext?.source ?? 'dynamic') === 'dynamic';
+    return false;
+  }
+
   async function exportStaticImage(core: EditorCore): Promise<string> {
+    const canvas = core.fabricCanvas;
+    const dynamicObjects = canvas.getObjects().filter(isDynamicExportObject);
+    const visibilityState = dynamicObjects.map((obj) => ({ obj, visible: obj.visible }));
+    const activeObjects = canvas.getActiveObjects();
+
+    canvas.discardActiveObject();
+    dynamicObjects.forEach((obj) => obj.set('visible', false));
+    canvas.renderAll();
+
     const exportPlugin = core.getPlugin<EinkExportPlugin>('EinkExportPlugin');
-    if (!exportPlugin) {
-      return core.fabricCanvas.toDataURL({ format: 'png' as const, multiplier: 1 });
+    try {
+      if (!exportPlugin) {
+        return core.fabricCanvas.toDataURL({ format: 'png' as const, multiplier: 1 });
+      }
+      const blob = await exportPlugin.exportDitheredImage('png');
+      return blobToDataURL(blob);
+    } finally {
+      visibilityState.forEach(({ obj, visible }) => obj.set('visible', visible));
+      selectObjects(core, activeObjects);
+      canvas.renderAll();
     }
-    const blob = await exportPlugin.exportDitheredImage('png');
-    return blobToDataURL(blob);
   }
 
   /** Generate save payload from current editor state */
@@ -2775,7 +2816,9 @@ function historySignature(state: HistoryState): string {
 
       const canvasDataURL = await exportStaticImage(core);
 
-      const payload = buildSavePayload(core.bootConfig, fabricJson, canvasDataURL);
+      const payload = buildSavePayload(core.bootConfig, fabricJson, canvasDataURL, {
+        exportMode: saveExportMode.value,
+      });
       savePayload.value = payload;
 
       const onSave = core.bootConfig.onSave;
@@ -2815,6 +2858,7 @@ function historySignature(state: HistoryState): string {
     savePayload,
     isSaving,
     saveError,
+    saveExportMode,
     canUndo,
     canRedo,
     hasClipboard,
@@ -2826,6 +2870,7 @@ function historySignature(state: HistoryState): string {
     initEditor,
     loadTemplate,
     getPalette,
+    setSaveExportMode,
     addRect,
     addLine,
     addText,
