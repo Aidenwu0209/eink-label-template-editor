@@ -283,7 +283,10 @@ function handleStaticImageFileChange(event: Event) {
 
 <template>
   <aside class="properties-panel">
-    <div class="panel-title">{{ panelTitle }}</div>
+    <div class="panel-title">
+      <span>{{ panelTitle }}</span>
+      <span v-if="objectType" class="panel-type-badge">{{ objectType }}</span>
+    </div>
 
     <div v-if="!hasSupportedSelection" class="empty-state">
       <div class="empty-state-mark">+</div>
@@ -413,7 +416,7 @@ function handleStaticImageFileChange(event: Event) {
 
     <!-- TEXT properties -->
     <template v-if="isText">
-      <div class="prop-group">
+      <div class="prop-group prop-wide">
         <label class="prop-label">文本内容</label>
         <input
           type="text"
@@ -423,7 +426,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
 
-      <div class="prop-group">
+      <div class="prop-group prop-wide">
         <label class="prop-label">数据字段</label>
         <select
           class="prop-input"
@@ -436,7 +439,7 @@ function handleStaticImageFileChange(event: Event) {
         <div class="prop-hint">选择字段后，文本会使用预览数据中的对应值。</div>
       </div>
 
-      <div v-if="textFieldBinding" class="prop-group">
+      <div v-if="textFieldBinding" class="prop-group prop-wide">
         <label class="prop-label">预览数据 · {{ fieldOptionLabel(textFieldBinding) }}</label>
         <input
           type="text"
@@ -527,25 +530,20 @@ function handleStaticImageFileChange(event: Event) {
         <div class="prop-hint">填 0 表示不限制行数。</div>
       </div>
 
-      <div class="prop-group">
-        <label class="prop-label">字体</label>
-        <input
-          type="text"
-          class="prop-input"
-          value="AlibabaPuHuiTi"
-          disabled
-        />
+      <div class="info-row">
+        <span>字体</span>
+        <b>AlibabaPuHuiTi</b>
       </div>
     </template>
 
     <!-- PRICE properties -->
     <template v-if="isPrice">
-      <div class="prop-group">
-        <label class="prop-label">数据字段</label>
-        <input type="text" class="prop-input" :value="fieldOptionLabel('price')" disabled />
+      <div class="info-row">
+        <span>数据字段</span>
+        <b>{{ fieldOptionLabel('price') }}</b>
       </div>
 
-      <div class="prop-group">
+      <div class="prop-group prop-wide">
         <label class="prop-label">预览价格</label>
         <input
           type="number"
@@ -739,12 +737,12 @@ function handleStaticImageFileChange(event: Event) {
 
     <!-- DISCOUNT properties -->
     <template v-if="isDiscount">
-      <div class="prop-group">
-        <label class="prop-label">数据字段</label>
-        <input type="text" class="prop-input" :value="fieldOptionLabel('discount')" disabled />
+      <div class="info-row">
+        <span>数据字段</span>
+        <b>{{ fieldOptionLabel('discount') }}</b>
       </div>
 
-      <div class="prop-group">
+      <div class="prop-group prop-wide">
         <label class="prop-label">预览折扣</label>
         <input
           type="number"
@@ -755,7 +753,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
 
-      <div class="prop-group">
+      <div class="prop-group prop-wide">
         <label class="prop-label">显示格式</label>
         <input
           type="text"
@@ -853,17 +851,12 @@ function handleStaticImageFileChange(event: Event) {
 
     <!-- IMAGE properties -->
     <template v-if="isImage">
-      <div class="prop-group">
-        <label class="prop-label">图片来源</label>
-        <input
-          type="text"
-          class="prop-input"
-          :value="imageSource === 'dynamic' ? '数据字段：图片地址（imageUrl）' : '手动上传 / 图片 URL'"
-          disabled
-        />
+      <div class="info-row">
+        <span>图片来源</span>
+        <b>{{ imageSource === 'dynamic' ? '数据字段：图片地址（imageUrl）' : '手动上传 / 图片 URL' }}</b>
       </div>
 
-      <div class="prop-group" v-if="imageSource === 'dynamic'">
+      <div class="prop-group prop-wide" v-if="imageSource === 'dynamic'">
         <label class="prop-label">预览图片地址</label>
         <input
           type="text"
@@ -874,7 +867,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
 
-      <div class="prop-group" v-if="imageSource === 'static'">
+      <div class="prop-group prop-wide" v-if="imageSource === 'static'">
         <label class="prop-label">图片 URL / Base64</label>
         <input
           type="text"
@@ -885,7 +878,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
 
-      <div class="prop-group" v-if="imageSource === 'static'">
+      <div class="prop-group prop-wide" v-if="imageSource === 'static'">
         <label class="prop-label">上传图片</label>
         <input
           type="file"
@@ -899,14 +892,9 @@ function handleStaticImageFileChange(event: Event) {
 
       <div v-if="imageLoadError" class="prop-error">{{ imageLoadError }}</div>
 
-      <div class="prop-group" v-if="imageSource === 'dynamic'">
-        <label class="prop-label">数据字段</label>
-        <input
-          type="text"
-          class="prop-input"
-          :value="fieldOptionLabel('imageUrl')"
-          disabled
-        />
+      <div class="info-row" v-if="imageSource === 'dynamic'">
+        <span>数据字段</span>
+        <b>{{ fieldOptionLabel('imageUrl') }}</b>
       </div>
 
       <div class="prop-group">
@@ -950,12 +938,12 @@ function handleStaticImageFileChange(event: Event) {
 
     <!-- QRCODE properties -->
     <template v-if="isQrcode">
-      <div class="prop-group">
-        <label class="prop-label">数据字段</label>
-        <input type="text" class="prop-input" :value="fieldOptionLabel('qrContent')" disabled />
+      <div class="info-row">
+        <span>数据字段</span>
+        <b>{{ fieldOptionLabel('qrContent') }}</b>
       </div>
 
-      <div class="prop-group">
+      <div class="prop-group prop-wide">
         <label class="prop-label">预览二维码内容</label>
         <input
           type="text"
@@ -1028,12 +1016,18 @@ function handleStaticImageFileChange(event: Event) {
 
     <!-- BARCODE properties -->
     <template v-if="isBarcode">
-      <div class="prop-group">
-        <label class="prop-label">数据字段</label>
-        <input type="text" class="prop-input" :value="fieldOptionLabel('barcodeContent')" disabled />
+      <div class="section-label">内容</div>
+      <div class="info-row">
+        <span>数据字段</span>
+        <b>{{ fieldOptionLabel('barcodeContent') }}</b>
       </div>
 
-      <div class="prop-group">
+      <div class="info-row">
+        <span>条码格式</span>
+        <b>CODE128</b>
+      </div>
+
+      <div class="prop-group prop-wide">
         <label class="prop-label">预览条码内容</label>
         <input
           type="text"
@@ -1041,11 +1035,6 @@ function handleStaticImageFileChange(event: Event) {
           :value="barcodePreviewValue"
           @change="updatePreviewField('barcodeContent', ($event.target as HTMLInputElement).value)"
         />
-      </div>
-
-      <div class="prop-group">
-        <label class="prop-label">条码格式</label>
-        <input type="text" class="prop-input" value="CODE128" disabled />
       </div>
 
       <div class="prop-group">
@@ -1059,6 +1048,8 @@ function handleStaticImageFileChange(event: Event) {
           <option value="false">否</option>
         </select>
       </div>
+
+      <div class="section-label">尺寸</div>
 
       <div class="prop-group">
         <label class="prop-label">宽度</label>
@@ -1080,9 +1071,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
 
-      <div v-if="barcodeWarnings.length" class="prop-warning">
-        <div v-for="warning in barcodeWarnings" :key="warning.code">{{ warning.message }}</div>
-      </div>
+      <div class="section-label">样式</div>
 
       <PaletteColorPicker
         label="前景色"
@@ -1097,6 +1086,12 @@ function handleStaticImageFileChange(event: Event) {
         :model-value="barcodeBgColor"
         @update:model-value="updateProp('ext.backgroundColor', $event)"
       />
+
+      <div class="section-label">可读性</div>
+      <div v-if="barcodeWarnings.length" class="prop-warning">
+        <div v-for="warning in barcodeWarnings" :key="warning.code">{{ warning.message }}</div>
+      </div>
+      <div v-else class="prop-note">当前条码尺寸和颜色未检测到明显可读性问题。</div>
     </template>
     </template>
   </aside>
@@ -1105,27 +1100,48 @@ function handleStaticImageFileChange(event: Event) {
 <style scoped>
 .properties-panel {
   min-height: 0;
-  background: linear-gradient(180deg, rgba(56, 57, 57, 0.94), rgba(33, 34, 35, 0.96));
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 12px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  height: 100%;
+  padding: 0 12px 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  align-content: start;
+  gap: 12px 10px;
   overflow-y: auto;
   flex: 1 1 auto;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.16);
 }
 
 .panel-title {
-  font-size: 13px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 -12px;
+  padding: 12px 12px 10px;
+  font-size: 15px;
   font-weight: 800;
   color: #f0e9de;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(52, 53, 53, 0.98), rgba(39, 40, 41, 0.98));
+}
+
+.panel-type-badge {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  color: #17130a;
+  background: #d0b44b;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
 }
 
 .empty-state {
+  grid-column: 1 / -1;
   display: flex;
   min-height: 190px;
   flex-direction: column;
@@ -1165,14 +1181,17 @@ function handleStaticImageFileChange(event: Event) {
 }
 
 .section-label {
-  font-size: 11px;
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding: 10px 0 0;
+  font-size: 12px;
   font-weight: 800;
   color: #d8d0c3;
-  padding-top: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .quick-preset-row {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
@@ -1197,19 +1216,28 @@ function handleStaticImageFileChange(event: Event) {
 .prop-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
+  min-width: 0;
+}
+
+.prop-wide,
+.info-row,
+.prop-note {
+  grid-column: 1 / -1;
 }
 
 .prop-label {
-  font-size: 11px;
+  font-size: 12px;
   color: #a69f95;
-  font-weight: 650;
+  font-weight: 750;
 }
 
 .prop-input {
   width: 100%;
-  padding: 7px 9px;
-  font-size: 12px;
+  min-height: 38px;
+  padding: 9px 10px;
+  font-size: 13px;
+  font-weight: 650;
   background: rgba(14, 15, 15, 0.72);
   color: #eee7dc;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1228,16 +1256,46 @@ function handleStaticImageFileChange(event: Event) {
   cursor: not-allowed;
 }
 
+.info-row {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  color: #ece4d8;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.info-row span {
+  color: #a69f95;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.info-row b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .prop-hint {
-  font-size: 10px;
+  font-size: 11px;
   color: #9f988f;
+  line-height: 1.45;
 }
 
 .prop-error,
-.prop-warning {
-  padding: 6px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+.prop-warning,
+.prop-note {
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -1251,5 +1309,20 @@ function handleStaticImageFileChange(event: Event) {
   color: #ffe1a3;
   background: rgba(232, 184, 17, 0.14);
   border: 1px solid rgba(232, 184, 17, 0.35);
+}
+
+.prop-note {
+  color: #bdb4a8;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.properties-panel :deep(.palette-picker) {
+  min-width: 0;
+}
+
+.properties-panel :deep(.picker-label) {
+  font-size: 12px;
+  font-weight: 750;
 }
 </style>

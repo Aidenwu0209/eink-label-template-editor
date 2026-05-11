@@ -38,23 +38,24 @@ function selectColor(hex: string) {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .picker-label {
-  font-size: 11px;
+  font-size: 12px;
   color: #a69f95;
-  font-weight: 650;
+  font-weight: 750;
 }
 
 .color-swatches {
   display: flex;
-  gap: 7px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .swatch {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 8px;
   cursor: pointer;

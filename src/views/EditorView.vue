@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useScreenStore } from '@/stores/screenStore';
 import { useEditorStore } from '@/stores/editorStore';
 import FabricCanvas from '@/components/canvas/FabricCanvas.vue';
@@ -18,6 +18,8 @@ type LocalTemplateRecord = {
   data: FabricJSON;
 };
 
+type InspectorTab = 'properties' | 'layers' | 'palette';
+
 const LOCAL_TEMPLATE_STORAGE_KEY = 'eink-label-template-editor.localTemplates.v1';
 
 const screenStore = useScreenStore();
@@ -32,6 +34,7 @@ const showGrid = ref(true);
 const savedTemplates = ref<LocalTemplateRecord[]>([]);
 const templateSelectValue = ref('');
 const draggedLayerId = ref<string | null>(null);
+const inspectorTab = ref<InspectorTab>('properties');
 
 const screenInfo = computed(() => {
   const p = config.screen.profile;
@@ -322,7 +325,7 @@ const gridOverlayStyle = computed(() => {
 
 const previewFitScale = computed(() => {
   const maxWidth = 252;
-  const maxHeight = 188;
+  const maxHeight = 112;
   const scaleX = maxWidth / config.canvas.width;
   const scaleY = maxHeight / (config.canvas.height + 34);
   return Math.min(scaleX, scaleY, 1.8);
@@ -340,6 +343,13 @@ const previewTransformStyle = computed(() => ({
   transform: `scale(${previewScale.value})`,
   transformOrigin: 'top left',
 }));
+
+watch(
+  () => editorStore.selectedObject,
+  (selected) => {
+    if (selected) inspectorTab.value = 'properties';
+  }
+);
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateWorkspaceSize);
@@ -527,68 +537,103 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <PropertiesPanel
-          :selected-object="editorStore.selectedObject"
-          :palette="palette"
-          :custom-fields="customFields"
-          :preview-data="config.previewData"
-          @update-prop="editorStore.updateObjectProp"
-          @update-preview-field="editorStore.updatePreviewDataField"
-        />
-
-        <section class="dock-panel layer-dock">
-          <div class="dock-title-row">
-            <span>图层</span>
-            <span class="dock-kicker">{{ editorStore.layerEntries.length }} 个对象</span>
-          </div>
-          <div class="layer-list">
+        <section class="dock-panel inspector-main">
+          <div class="inspector-tabs" role="tablist" aria-label="右侧检查器">
             <button
-              v-for="layer in editorStore.layerEntries"
-              :key="layer.id"
-              :class="['layer-row', { active: layer.selected, dragging: draggedLayerId === layer.id }]"
-              :title="`选择 ${layer.label}`"
-              draggable="true"
-              @dragstart="handleLayerDragStart(layer.id, $event)"
-              @dragover.prevent
-              @drop="handleLayerDrop(layer.id, $event)"
-              @dragend="handleLayerDragEnd"
-              @click="editorStore.selectObjectById(layer.id)"
+              :class="['inspector-tab', { active: inspectorTab === 'properties' }]"
+              type="button"
+              role="tab"
+              :aria-selected="inspectorTab === 'properties'"
+              @click="inspectorTab = 'properties'"
             >
-              <span class="layer-icon">{{ layer.locked ? '锁' : layer.type.slice(0, 1) }}</span>
-              <span class="layer-name">{{ layer.label }}</span>
-              <span class="layer-index">#{{ layer.index + 1 }}</span>
+              属性
             </button>
-            <div v-if="savedTemplates.length" class="template-records">
-              <div class="template-record-title">我的模板</div>
-              <button
-                v-for="item in savedTemplates.slice(0, 3)"
-                :key="item.id"
-                class="template-record"
-                :title="`载入 ${item.name}`"
-                @click="editorStore.loadTemplate(item.data)"
-              >
-                <span>{{ item.name }}</span>
-                <small>{{ formatTemplateTime(item.createdAt) }}</small>
-                <b title="删除记录" @click.stop="deleteLocalTemplate(item.id)">×</b>
-              </button>
-            </div>
-            <div v-if="!editorStore.layerEntries.length" class="layer-empty">暂无元素</div>
+            <button
+              :class="['inspector-tab', { active: inspectorTab === 'layers' }]"
+              type="button"
+              role="tab"
+              :aria-selected="inspectorTab === 'layers'"
+              @click="inspectorTab = 'layers'"
+            >
+              图层
+              <span>{{ editorStore.layerEntries.length }}</span>
+            </button>
+            <button
+              :class="['inspector-tab', { active: inspectorTab === 'palette' }]"
+              type="button"
+              role="tab"
+              :aria-selected="inspectorTab === 'palette'"
+              @click="inspectorTab = 'palette'"
+            >
+              色板
+              <span>{{ palette.length }}</span>
+            </button>
           </div>
-        </section>
 
-        <section class="dock-panel screen-dock">
-          <div class="dock-title-row">
-            <span>当前屏幕色板</span>
-            <span class="dock-kicker">{{ palette.length }} 色</span>
-          </div>
-          <div class="palette-strip">
-            <span
-              v-for="color in palette"
-              :key="color.hex"
-              class="palette-dot"
-              :style="{ backgroundColor: color.hex }"
-              :title="`${color.name} ${color.hex}`"
-            ></span>
+          <div class="inspector-tab-body">
+            <PropertiesPanel
+              v-if="inspectorTab === 'properties'"
+              :selected-object="editorStore.selectedObject"
+              :palette="palette"
+              :custom-fields="customFields"
+              :preview-data="config.previewData"
+              @update-prop="editorStore.updateObjectProp"
+              @update-preview-field="editorStore.updatePreviewDataField"
+            />
+
+            <div v-else-if="inspectorTab === 'layers'" class="tab-pane">
+              <div class="tab-pane-header">
+                <span>图层顺序</span>
+                <span>{{ editorStore.layerEntries.length }} 个对象</span>
+              </div>
+              <div class="layer-list">
+                <button
+                  v-for="layer in editorStore.layerEntries"
+                  :key="layer.id"
+                  :class="['layer-row', { active: layer.selected, dragging: draggedLayerId === layer.id }]"
+                  :title="`选择 ${layer.label}`"
+                  draggable="true"
+                  @dragstart="handleLayerDragStart(layer.id, $event)"
+                  @dragover.prevent
+                  @drop="handleLayerDrop(layer.id, $event)"
+                  @dragend="handleLayerDragEnd"
+                  @click="editorStore.selectObjectById(layer.id)"
+                >
+                  <span class="layer-icon">{{ layer.locked ? '锁' : layer.type.slice(0, 1) }}</span>
+                  <span class="layer-name">{{ layer.label }}</span>
+                  <span class="layer-index">#{{ layer.index + 1 }}</span>
+                </button>
+                <div v-if="savedTemplates.length" class="template-records">
+                  <div class="template-record-title">我的模板</div>
+                  <button
+                    v-for="item in savedTemplates.slice(0, 3)"
+                    :key="item.id"
+                    class="template-record"
+                    :title="`载入 ${item.name}`"
+                    @click="editorStore.loadTemplate(item.data)"
+                  >
+                    <span>{{ item.name }}</span>
+                    <small>{{ formatTemplateTime(item.createdAt) }}</small>
+                    <b title="删除记录" @click.stop="deleteLocalTemplate(item.id)">×</b>
+                  </button>
+                </div>
+                <div v-if="!editorStore.layerEntries.length" class="layer-empty">暂无元素</div>
+              </div>
+            </div>
+
+            <div v-else class="tab-pane">
+              <div class="tab-pane-header">
+                <span>当前屏幕色板</span>
+                <span>{{ palette.length }} 色</span>
+              </div>
+              <div class="palette-cards">
+                <div v-for="color in palette" :key="color.hex" class="palette-card">
+                  <span class="palette-dot" :style="{ backgroundColor: color.hex }"></span>
+                  <span class="palette-name">{{ color.name }}</span>
+                  <span class="palette-hex">{{ color.hex }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </aside>
@@ -997,7 +1042,7 @@ onUnmounted(() => {
 }
 
 .inspector-dock {
-  width: 318px;
+  width: 328px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -1014,6 +1059,12 @@ onUnmounted(() => {
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 12px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.16);
+}
+
+.preview-dock {
+  flex: 0 0 auto;
+  max-height: 178px;
+  overflow: hidden;
 }
 
 .dock-title-row {
@@ -1063,8 +1114,8 @@ onUnmounted(() => {
 .preview-stage {
   display: flex;
   justify-content: center;
-  padding: 14px 12px 16px;
-  max-height: 250px;
+  padding: 8px 10px 10px;
+  max-height: 126px;
   overflow: auto;
 }
 
@@ -1073,23 +1124,96 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.screen-dock {
-  flex-shrink: 0;
+.inspector-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.layer-dock {
-  max-height: 190px;
-  flex-shrink: 0;
+.inspector-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.inspector-tab {
+  min-width: 0;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: #b8b0a4;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.inspector-tab:hover,
+.inspector-tab.active {
+  color: #fff2b8;
+  border-color: rgba(240, 211, 91, 0.46);
+  background: rgba(240, 211, 91, 0.14);
+}
+
+.inspector-tab span {
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #17130a;
+  background: #d0b44b;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.inspector-tab-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
+}
+
+.tab-pane {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tab-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  color: #f0e9de;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.tab-pane-header span:last-child {
+  color: #a59e94;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .layer-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 146px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  padding: 8px;
+  padding: 8px 10px 12px;
 }
 
 .layer-row {
@@ -1209,10 +1333,24 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.palette-strip {
-  display: flex;
+.palette-cards {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 8px;
-  padding: 12px;
+  padding: 8px 12px 14px;
+  overflow-y: auto;
+}
+
+.palette-card {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  color: #e4dccf;
+  background: rgba(0, 0, 0, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
 }
 
 .palette-dot {
@@ -1221,6 +1359,21 @@ onUnmounted(() => {
   border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.28);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.palette-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.palette-hex {
+  color: #9d9589;
+  font-size: 11px;
+  font-weight: 750;
 }
 
 .editor-statusbar {
