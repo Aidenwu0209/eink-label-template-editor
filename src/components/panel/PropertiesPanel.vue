@@ -10,6 +10,7 @@ import type { PreviewData } from '@/boot/types';
 
 const props = defineProps<{
   selectedObject: fabric.Object | null;
+  selectionVersion?: number;
   palette: ColorEntry[];
   customFields?: string[];
   previewData?: PreviewData;
@@ -17,8 +18,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update-prop': [key: string, value: unknown];
+  'update-props-batch': [patches: Array<{ key: string; value: unknown }>];
   'update-preview-field': [field: string, value: unknown];
 }>();
+
+const selectedObject = computed(() => {
+  void props.selectionVersion;
+  return props.selectedObject;
+});
 
 const OBJECT_TYPE_LABELS = {
   RECT: '矩形框',
@@ -66,22 +73,40 @@ const QRCODE_ERROR_CORRECTION_LABELS: Record<QrcodeErrorCorrection, string> = {
   H: 'H - 容错最高，内容容量最小',
 };
 
+const FONT_FAMILY_OPTIONS = [
+  { value: 'AlibabaPuHuiTi', label: '阿里巴巴普惠体' },
+  { value: 'Arial', label: 'Arial' },
+  { value: 'Helvetica', label: 'Helvetica' },
+  { value: 'Georgia', label: 'Georgia' },
+  { value: 'Times New Roman', label: 'Times New Roman' },
+] as const;
+
+const CURRENCY_PRESETS = [
+  { value: 'cny-symbol', label: '¥12.90', patch: { currencySymbol: '¥', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+  { value: 'cny-yuan', label: '12.90元', patch: { currencySymbol: '元', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+  { value: 'cny-code', label: 'CNY 12.90', patch: { currencySymbol: 'CNY ', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+  { value: 'usd', label: '$12.90', patch: { currencySymbol: '$', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+  { value: 'eur', label: '€12.90', patch: { currencySymbol: '€', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+  { value: 'none', label: '无货币符号', patch: { currencySymbol: '', showCurrency: false, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+  { value: 'integer', label: '无小数', patch: { currencySymbol: '¥', showCurrency: true, decimalPlaces: 0, thousandSeparator: ',', decimalSeparator: '.' } },
+] as const;
+
 function fieldOptionLabel(field: string): string {
   const label = FIELD_LABELS[field];
   return label ? `${label}（${field}）` : field;
 }
 
 const objectType = computed(() => {
-  if (!props.selectedObject) return null;
-  const ext = (props.selectedObject as any).extensionType;
+  if (!selectedObject.value) return null;
+  const ext = (selectedObject.value as any).extensionType;
   if (ext === 'TEXT') return 'TEXT';
   if (ext === 'PRICE') return 'PRICE';
   if (ext === 'DISCOUNT') return 'DISCOUNT';
   if (ext === 'IMAGE') return 'IMAGE';
   if (ext === 'QRCODE') return 'QRCODE';
   if (ext === 'BARCODE') return 'BARCODE';
-  if (props.selectedObject.type === 'rect') return 'RECT';
-  if (props.selectedObject.type === 'line') return 'LINE';
+  if (selectedObject.value.type === 'rect') return 'RECT';
+  if (selectedObject.value.type === 'line') return 'LINE';
   return null;
 });
 
@@ -95,7 +120,7 @@ const isQrcode = computed(() => objectType.value === 'QRCODE');
 const isBarcode = computed(() => objectType.value === 'BARCODE');
 const hasSupportedSelection = computed(() => {
   return Boolean(
-    props.selectedObject
+    selectedObject.value
     && (isRect.value || isLine.value || isText.value || isPrice.value || isDiscount.value || isImage.value || isQrcode.value || isBarcode.value)
   );
 });
@@ -106,25 +131,25 @@ const objectTypeLabel = computed(() => {
 const panelTitle = computed(() => hasSupportedSelection.value ? `${objectTypeLabel.value}属性` : '属性面板');
 
 // RECT properties
-const rectX = computed(() => props.selectedObject?.left ?? 0);
-const rectY = computed(() => props.selectedObject?.top ?? 0);
-const rectWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
-const rectHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
-const rectFill = computed(() => (props.selectedObject?.fill as string) ?? '#000000');
-const rectStroke = computed(() => (props.selectedObject?.stroke as string) ?? '');
-const rectStrokeWidth = computed(() => props.selectedObject?.strokeWidth ?? 0);
+const rectX = computed(() => selectedObject.value?.left ?? 0);
+const rectY = computed(() => selectedObject.value?.top ?? 0);
+const rectWidth = computed(() => (selectedObject.value as fabric.Rect)?.width ?? 0);
+const rectHeight = computed(() => (selectedObject.value as fabric.Rect)?.height ?? 0);
+const rectFill = computed(() => (selectedObject.value?.fill as string) ?? '#000000');
+const rectStroke = computed(() => (selectedObject.value?.stroke as string) ?? '');
+const rectStrokeWidth = computed(() => selectedObject.value?.strokeWidth ?? 0);
 
 // LINE properties
-const lineObj = computed(() => props.selectedObject as fabric.Line | null);
+const lineObj = computed(() => selectedObject.value as fabric.Line | null);
 const lineX1 = computed(() => lineObj.value ? (lineObj.value as any).x1 ?? 0 : 0);
 const lineY1 = computed(() => lineObj.value ? (lineObj.value as any).y1 ?? 0 : 0);
 const lineX2 = computed(() => lineObj.value ? (lineObj.value as any).x2 ?? 0 : 0);
 const lineY2 = computed(() => lineObj.value ? (lineObj.value as any).y2 ?? 0 : 0);
-const lineStroke = computed(() => (props.selectedObject?.stroke as string) ?? '#000000');
-const lineStrokeWidth = computed(() => props.selectedObject?.strokeWidth ?? 1);
+const lineStroke = computed(() => (selectedObject.value?.stroke as string) ?? '#000000');
+const lineStrokeWidth = computed(() => selectedObject.value?.strokeWidth ?? 1);
 
 // TEXT properties
-const textObj = computed(() => props.selectedObject as fabric.Textbox | null);
+const textObj = computed(() => selectedObject.value as fabric.Textbox | null);
 const textContent = computed(() => textObj.value?.text ?? '');
 const textFontSize = computed(() => textObj.value?.fontSize ?? 16);
 const textFontWeight = computed(() => textObj.value?.fontWeight ?? 'normal');
@@ -132,8 +157,8 @@ const textFill = computed(() => (textObj.value?.fill as string) ?? '#000000');
 const textAlign = computed(() => textObj.value?.textAlign ?? 'left');
 
 const textExt = computed<TextExtension | null>(() => {
-  if (!isText.value || !props.selectedObject) return null;
-  return (props.selectedObject as any).extension as TextExtension;
+  if (!isText.value || !selectedObject.value) return null;
+  return (selectedObject.value as any).extension as TextExtension;
 });
 
 const textOverflow = computed<TextOverflowMode>(() => textExt.value?.overflow ?? 'ellipsis');
@@ -153,16 +178,16 @@ const bindableFields = computed(() => {
 
 // IMAGE properties
 const imageExt = computed<ImageExtension | null>(() => {
-  if (!isImage.value || !props.selectedObject) return null;
-  return (props.selectedObject as any).extension as ImageExtension;
+  if (!isImage.value || !selectedObject.value) return null;
+  return (selectedObject.value as any).extension as ImageExtension;
 });
 
 const imageSource = computed(() => imageExt.value?.source ?? 'static');
 const imageSrc = computed(() => imageExt.value?.src ?? '');
 const imageFitMode = computed<ImageFitMode>(() => imageExt.value?.fitMode ?? 'contain');
 const imageBgColor = computed(() => imageExt.value?.backgroundColor ?? '#FFFFFF');
-const imageWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
-const imageHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const imageWidth = computed(() => (selectedObject.value as fabric.Rect)?.width ?? 0);
+const imageHeight = computed(() => (selectedObject.value as fabric.Rect)?.height ?? 0);
 const imagePreviewValue = computed(() => props.previewData?.imageUrl == null ? '' : String(props.previewData.imageUrl));
 const imageUploadError = ref('');
 const imageLoadError = computed(() => {
@@ -172,73 +197,90 @@ const imageLoadError = computed(() => {
 
 // PRICE properties
 const priceExt = computed<PriceExtension | null>(() => {
-  if (!isPrice.value || !props.selectedObject) return null;
-  return (props.selectedObject as any).extension as PriceExtension;
+  if (!isPrice.value || !selectedObject.value) return null;
+  return (selectedObject.value as any).extension as PriceExtension;
 });
 
 const priceCurrencySymbol = computed(() => priceExt.value?.currencySymbol ?? '¥');
+const priceFontFamily = computed(() => priceExt.value?.fontFamily ?? 'AlibabaPuHuiTi');
 const priceShowCurrency = computed(() => priceExt.value?.showCurrency ?? true);
 const priceDecimalPlaces = computed(() => priceExt.value?.decimalPlaces ?? 2);
 const priceThousandSep = computed(() => priceExt.value?.thousandSeparator ?? ',');
 const priceDecimalSep = computed(() => priceExt.value?.decimalSeparator ?? '.');
-const priceWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
-const priceHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const priceWidth = computed(() => (selectedObject.value as fabric.Rect)?.width ?? 0);
+const priceHeight = computed(() => (selectedObject.value as fabric.Rect)?.height ?? 0);
 const priceFieldBinding = computed<PriceBindableField>(() => priceExt.value?.fieldBinding ?? 'price');
 const pricePreviewValue = computed(() => {
   const field = priceFieldBinding.value;
   return props.previewData?.[field] == null ? '' : String(props.previewData[field]);
 });
+const priceFitWarnings = computed(() => priceExt.value?.renderMeta?.fitWarnings ?? []);
 
 // DISCOUNT properties
 const discountExt = computed<DiscountExtension | null>(() => {
-  if (!isDiscount.value || !props.selectedObject) return null;
-  return (props.selectedObject as any).extension as DiscountExtension;
+  if (!isDiscount.value || !selectedObject.value) return null;
+  return (selectedObject.value as any).extension as DiscountExtension;
 });
 
 const discountFormatTemplate = computed(() => discountExt.value?.formatTemplate ?? '{value}折');
 const discountBgColor = computed(() => discountExt.value?.backgroundColor ?? '#FFFFFF');
 const discountTextColor = computed(() => discountExt.value?.textColor ?? '#000000');
+const discountFontFamily = computed(() => discountExt.value?.fontFamily ?? 'AlibabaPuHuiTi');
 const discountFontSize = computed(() => discountExt.value?.fontSize ?? 20);
 const discountFontWeight = computed(() => discountExt.value?.fontWeight ?? 'normal');
 const discountTextAlign = computed(() => discountExt.value?.textAlign ?? 'center');
 const discountVerticalAlign = computed(() => discountExt.value?.verticalAlign ?? 'middle');
-const discountWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
-const discountHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const discountWidth = computed(() => (selectedObject.value as fabric.Rect)?.width ?? 0);
+const discountHeight = computed(() => (selectedObject.value as fabric.Rect)?.height ?? 0);
 const discountPreviewValue = computed(() => props.previewData?.discount == null ? '' : String(props.previewData.discount));
+const discountFitWarnings = computed(() => discountExt.value?.renderMeta?.fitWarnings ?? []);
 
 // QRCODE properties
 const qrcodeExt = computed<QrcodeExtension | null>(() => {
-  if (!isQrcode.value || !props.selectedObject) return null;
-  return (props.selectedObject as any).extension as QrcodeExtension;
+  if (!isQrcode.value || !selectedObject.value) return null;
+  return (selectedObject.value as any).extension as QrcodeExtension;
 });
 
 const qrcodeErrorCorrection = computed<QrcodeErrorCorrection>(() => qrcodeExt.value?.errorCorrection ?? 'M');
+const qrcodeSource = computed(() => qrcodeExt.value?.source ?? 'dynamic');
+const qrcodeStaticContent = computed(() => qrcodeExt.value?.content ?? '');
 const qrcodeMargin = computed(() => qrcodeExt.value?.margin ?? 1);
 const qrcodeFgColor = computed(() => qrcodeExt.value?.foregroundColor ?? '#000000');
 const qrcodeBgColor = computed(() => qrcodeExt.value?.backgroundColor ?? '#FFFFFF');
-const qrcodeWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
-const qrcodeHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const qrcodeWidth = computed(() => (selectedObject.value as fabric.Rect)?.width ?? 0);
+const qrcodeHeight = computed(() => (selectedObject.value as fabric.Rect)?.height ?? 0);
 const qrcodeWarnings = computed(() => qrcodeExt.value?.readabilityWarnings ?? []);
 const qrcodePreviewValue = computed(() => props.previewData?.qrContent == null ? '' : String(props.previewData.qrContent));
+const qrcodeContentValue = computed(() => qrcodeSource.value === 'static' ? qrcodeStaticContent.value : qrcodePreviewValue.value);
+const qrcodeUploadError = ref('');
 
 // BARCODE properties
 const barcodeExt = computed<BarcodeExtension | null>(() => {
-  if (!isBarcode.value || !props.selectedObject) return null;
-  return (props.selectedObject as any).extension as BarcodeExtension;
+  if (!isBarcode.value || !selectedObject.value) return null;
+  return (selectedObject.value as any).extension as BarcodeExtension;
 });
 
 const barcodeShowText = computed(() => barcodeExt.value?.showText ?? true);
+const barcodeSource = computed(() => barcodeExt.value?.source ?? 'dynamic');
+const barcodeStaticContent = computed(() => barcodeExt.value?.content ?? '');
 const barcodeFgColor = computed(() => barcodeExt.value?.foregroundColor ?? '#000000');
 const barcodeBgColor = computed(() => barcodeExt.value?.backgroundColor ?? '#FFFFFF');
-const barcodeWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
-const barcodeHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const barcodeWidth = computed(() => (selectedObject.value as fabric.Rect)?.width ?? 0);
+const barcodeHeight = computed(() => (selectedObject.value as fabric.Rect)?.height ?? 0);
 const barcodeWarnings = computed(() => barcodeExt.value?.readabilityWarnings ?? []);
+const barcodeUploadError = ref('');
 
 function updateProp(key: string, value: unknown) {
   emit('update-prop', key, value);
 }
 
 const barcodePreviewValue = computed(() => props.previewData?.barcodeContent == null ? '' : String(props.previewData.barcodeContent));
+const barcodeContentValue = computed(() => barcodeSource.value === 'static' ? barcodeStaticContent.value : barcodePreviewValue.value);
+const barcodeInvalidContent = computed(() => /[^\x20-\x7f]/.test(barcodeContentValue.value));
+
+function updatePropsBatch(patches: Array<{ key: string; value: unknown }>) {
+  emit('update-props-batch', patches);
+}
 
 function updatePreviewField(field: string, value: unknown) {
   emit('update-preview-field', field, value);
@@ -253,17 +295,104 @@ function applyPricePreset(kind: 'sale' | 'plain') {
   if (!ext) return;
 
   if (kind === 'sale') {
-    const red = paletteHex('red', '#CC0000');
-    updateProp('ext.currencyStyle', { ...ext.currencyStyle, fontSize: 13, fontWeight: 'normal', color: '#000000' });
-    updateProp('ext.integerStyle', { ...ext.integerStyle, fontSize: 28, fontWeight: 'bold', color: red });
-    updateProp('ext.decimalStyle', { ...ext.decimalStyle, fontSize: 15, fontWeight: 'normal', color: red, offsetY: -10 });
+    const accent = paletteHex('red', paletteHex('black', '#000000'));
+    updatePropsBatch([
+      { key: 'ext.fontFamily', value: ext.fontFamily ?? 'AlibabaPuHuiTi' },
+      { key: 'ext.currencyStyle', value: { ...ext.currencyStyle, fontSize: 13, fontWeight: 'bold', color: '#000000' } },
+      { key: 'ext.integerStyle', value: { ...ext.integerStyle, fontSize: 32, fontWeight: 'bold', color: accent } },
+      { key: 'ext.decimalStyle', value: { ...ext.decimalStyle, fontSize: 16, fontWeight: 'bold', color: accent, offsetY: -10 } },
+    ]);
     return;
   }
 
   const black = paletteHex('black', '#000000');
-  updateProp('ext.currencyStyle', { ...ext.currencyStyle, fontSize: 12, fontWeight: 'normal', color: black });
-  updateProp('ext.integerStyle', { ...ext.integerStyle, fontSize: 24, fontWeight: 'bold', color: black });
-  updateProp('ext.decimalStyle', { ...ext.decimalStyle, fontSize: 13, fontWeight: 'normal', color: black, offsetY: -8 });
+  updatePropsBatch([
+    { key: 'ext.fontFamily', value: ext.fontFamily ?? 'AlibabaPuHuiTi' },
+    { key: 'ext.currencyStyle', value: { ...ext.currencyStyle, fontSize: 10, fontWeight: 'normal', color: black } },
+    { key: 'ext.integerStyle', value: { ...ext.integerStyle, fontSize: 22, fontWeight: 'normal', color: black } },
+    { key: 'ext.decimalStyle', value: { ...ext.decimalStyle, fontSize: 12, fontWeight: 'normal', color: black, offsetY: -6 } },
+  ]);
+}
+
+function applyCurrencyPreset(value: string) {
+  const preset = CURRENCY_PRESETS.find((item) => item.value === value);
+  if (!preset) return;
+  updatePropsBatch([
+    { key: 'ext.currencySymbol', value: preset.patch.currencySymbol },
+    { key: 'ext.showCurrency', value: preset.patch.showCurrency },
+    { key: 'ext.decimalPlaces', value: preset.patch.decimalPlaces },
+    { key: 'ext.thousandSeparator', value: preset.patch.thousandSeparator },
+    { key: 'ext.decimalSeparator', value: preset.patch.decimalSeparator },
+  ]);
+}
+
+function updateQrcodeContent(value: string) {
+  if (qrcodeSource.value === 'static') {
+    updateProp('ext.content', value);
+  } else {
+    updatePreviewField('qrContent', value);
+  }
+}
+
+function updateBarcodeContent(value: string) {
+  if (barcodeSource.value === 'static') {
+    updateProp('ext.content', value);
+  } else {
+    updatePreviewField('barcodeContent', value);
+  }
+}
+
+function updateQrcodeSource(source: 'dynamic' | 'static') {
+  if (source === 'static') {
+    updatePropsBatch([
+      { key: 'ext.source', value: source },
+      { key: 'ext.content', value: qrcodeContentValue.value },
+    ]);
+    return;
+  }
+  updateProp('ext.source', source);
+}
+
+function updateBarcodeSource(source: 'dynamic' | 'static') {
+  if (source === 'static') {
+    updatePropsBatch([
+      { key: 'ext.source', value: source },
+      { key: 'ext.content', value: barcodeContentValue.value },
+    ]);
+    return;
+  }
+  updateProp('ext.source', source);
+}
+
+function handleTextFileChange(event: Event, updater: (value: string) => void, setError: (message: string) => void) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  setError('');
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.txt') && file.type !== 'text/plain') {
+    setError('请选择 .txt 文本文件');
+    input.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    updater(String(reader.result ?? ''));
+    input.value = '';
+  };
+  reader.onerror = () => {
+    setError(reader.error?.message || '读取文本文件失败');
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function handleQrcodeTextFileChange(event: Event) {
+  handleTextFileChange(event, updateQrcodeContent, (message) => { qrcodeUploadError.value = message; });
+}
+
+function handleBarcodeTextFileChange(event: Event) {
+  handleTextFileChange(event, updateBarcodeContent, (message) => { barcodeUploadError.value = message; });
 }
 
 function handleStaticImageFileChange(event: Event) {
@@ -491,6 +620,19 @@ function handleStaticImageFileChange(event: Event) {
         @update:model-value="updateProp('fill', $event)"
       />
 
+      <div class="prop-group prop-wide">
+        <label class="prop-label">字体</label>
+        <select
+          class="prop-input"
+          :value="textObj?.fontFamily ?? 'AlibabaPuHuiTi'"
+          @change="updateProp('fontFamily', ($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="font in FONT_FAMILY_OPTIONS" :key="font.value" :value="font.value">
+            {{ font.label }}
+          </option>
+        </select>
+      </div>
+
       <div class="prop-group">
         <label class="prop-label">水平对齐</label>
         <select
@@ -540,10 +682,7 @@ function handleStaticImageFileChange(event: Event) {
         <div class="prop-hint">填 0 表示不限制行数。</div>
       </div>
 
-      <div class="info-row">
-        <span>字体</span>
-        <b>AlibabaPuHuiTi</b>
-      </div>
+      <div class="prop-note">字体以浏览器和导出环境可用字体为准，推荐优先使用阿里巴巴普惠体。</div>
     </template>
 
     <!-- PRICE properties -->
@@ -574,8 +713,35 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="quick-preset-row">
-        <button type="button" @click="applyPricePreset('sale')">醒目红色价</button>
+        <button type="button" @click="applyPricePreset('sale')">{{ paletteHex('red', '') ? '红色促销价' : '粗黑强调价' }}</button>
         <button type="button" @click="applyPricePreset('plain')">黑色常规价</button>
+      </div>
+
+      <div class="prop-group prop-wide">
+        <label class="prop-label">字体</label>
+        <select
+          class="prop-input"
+          :value="priceFontFamily"
+          @change="updateProp('ext.fontFamily', ($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="font in FONT_FAMILY_OPTIONS" :key="font.value" :value="font.value">
+            {{ font.label }}
+          </option>
+        </select>
+      </div>
+
+      <div v-if="priceFitWarnings.length" class="prop-warning">
+        <div v-for="warning in priceFitWarnings" :key="warning.code">{{ warning.message }}</div>
+      </div>
+
+      <div class="prop-group prop-wide">
+        <label class="prop-label">货币样式快捷选择</label>
+        <select class="prop-input" value="" @change="applyCurrencyPreset(($event.target as HTMLSelectElement).value)">
+          <option value="" disabled>选择一种显示格式</option>
+          <option v-for="preset in CURRENCY_PRESETS" :key="preset.value" :value="preset.value">
+            {{ preset.label }}
+          </option>
+        </select>
       </div>
 
       <div class="prop-group">
@@ -816,6 +982,23 @@ function handleStaticImageFileChange(event: Event) {
         @update:model-value="updateProp('ext.textColor', $event)"
       />
 
+      <div class="prop-group prop-wide">
+        <label class="prop-label">字体</label>
+        <select
+          class="prop-input"
+          :value="discountFontFamily"
+          @change="updateProp('ext.fontFamily', ($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="font in FONT_FAMILY_OPTIONS" :key="font.value" :value="font.value">
+            {{ font.label }}
+          </option>
+        </select>
+      </div>
+
+      <div v-if="discountFitWarnings.length" class="prop-warning">
+        <div v-for="warning in discountFitWarnings" :key="warning.code">{{ warning.message }}</div>
+      </div>
+
       <div class="prop-group">
         <label class="prop-label">字号</label>
         <input
@@ -958,17 +1141,38 @@ function handleStaticImageFileChange(event: Event) {
     <template v-if="isQrcode">
       <div class="info-row">
         <span>数据字段</span>
-        <b>{{ fieldOptionLabel('qrContent') }}</b>
+        <b>{{ qrcodeSource === 'dynamic' ? fieldOptionLabel('qrContent') : '静态内容' }}</b>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">预览二维码内容</label>
-        <input
-          type="text"
+        <label class="prop-label">内容来源</label>
+        <select
           class="prop-input"
-          :value="qrcodePreviewValue"
-          @change="updatePreviewField('qrContent', ($event.target as HTMLInputElement).value)"
-        />
+          :value="qrcodeSource"
+          @change="updateQrcodeSource(($event.target as HTMLSelectElement).value as 'dynamic' | 'static')"
+        >
+          <option value="dynamic">动态字段 qrContent</option>
+          <option value="static">静态内容（只影响当前二维码）</option>
+        </select>
+      </div>
+
+      <div class="prop-group prop-wide">
+        <label class="prop-label">{{ qrcodeSource === 'static' ? '静态二维码内容' : '预览二维码内容' }}</label>
+        <textarea
+          class="prop-input prop-textarea"
+          :value="qrcodeContentValue"
+          @change="updateQrcodeContent(($event.target as HTMLTextAreaElement).value)"
+        ></textarea>
+        <div class="prop-hint">
+          {{ qrcodeSource === 'static' ? '保存到当前二维码元素，不随预览数据变化。' : '修改测试数据会刷新所有动态二维码。' }}
+        </div>
+      </div>
+
+      <div class="prop-group prop-wide">
+        <label class="prop-label">上传文本内容</label>
+        <input class="prop-input" type="file" accept=".txt,text/plain" @change="handleQrcodeTextFileChange" />
+        <div class="prop-hint">仅支持 .txt，文件内容会写入当前二维码内容。</div>
+        <div v-if="qrcodeUploadError" class="prop-error">{{ qrcodeUploadError }}</div>
       </div>
 
       <div class="prop-group">
@@ -1037,7 +1241,7 @@ function handleStaticImageFileChange(event: Event) {
       <div class="section-label">内容</div>
       <div class="info-row">
         <span>数据字段</span>
-        <b>{{ fieldOptionLabel('barcodeContent') }}</b>
+        <b>{{ barcodeSource === 'dynamic' ? fieldOptionLabel('barcodeContent') : '静态内容' }}</b>
       </div>
 
       <div class="info-row">
@@ -1046,13 +1250,38 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">预览条码内容</label>
-        <input
-          type="text"
+        <label class="prop-label">内容来源</label>
+        <select
           class="prop-input"
-          :value="barcodePreviewValue"
-          @change="updatePreviewField('barcodeContent', ($event.target as HTMLInputElement).value)"
-        />
+          :value="barcodeSource"
+          @change="updateBarcodeSource(($event.target as HTMLSelectElement).value as 'dynamic' | 'static')"
+        >
+          <option value="dynamic">动态字段 barcodeContent</option>
+          <option value="static">静态内容（只影响当前条形码）</option>
+        </select>
+      </div>
+
+      <div class="prop-group prop-wide">
+        <label class="prop-label">{{ barcodeSource === 'static' ? '静态条码内容' : '预览条码内容' }}</label>
+        <textarea
+          class="prop-input prop-textarea"
+          :value="barcodeContentValue"
+          @change="updateBarcodeContent(($event.target as HTMLTextAreaElement).value)"
+        ></textarea>
+        <div class="prop-hint">
+          {{ barcodeSource === 'static' ? '保存到当前条形码元素，不随预览数据变化。' : '修改测试数据会刷新所有动态条形码。' }}
+        </div>
+      </div>
+
+      <div class="prop-group prop-wide">
+        <label class="prop-label">上传文本内容</label>
+        <input class="prop-input" type="file" accept=".txt,text/plain" @change="handleBarcodeTextFileChange" />
+        <div class="prop-hint">仅支持 .txt，文件内容会写入当前条形码内容。</div>
+        <div v-if="barcodeUploadError" class="prop-error">{{ barcodeUploadError }}</div>
+      </div>
+
+      <div v-if="barcodeInvalidContent" class="prop-warning">
+        CODE128 仅支持英文、数字和常用半角符号；中文或特殊字符会被忽略，请改用二维码。
       </div>
 
       <div class="prop-group">
@@ -1272,6 +1501,12 @@ function handleStaticImageFileChange(event: Event) {
 .prop-input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.prop-textarea {
+  min-height: 86px;
+  resize: vertical;
+  line-height: 1.45;
 }
 
 .info-row {

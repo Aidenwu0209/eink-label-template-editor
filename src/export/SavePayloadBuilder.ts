@@ -143,10 +143,13 @@ function extractWidget(
       };
     }
     case 'QRCODE': {
+      const source = ext?.source ?? 'dynamic';
+      if (source !== 'dynamic') return null;
+      const fieldId = ext?.fieldBinding ?? 'qrContent';
       return {
         id: widgetIdForObject(obj, 'qrcode'),
         type: 'QRCODE',
-        fieldId: 'qrContent',
+        fieldId,
         ...widgetGeometry(obj),
         errorCorrection: ext?.errorCorrection ?? 'M',
         margin: ext?.margin ?? 1,
@@ -155,10 +158,13 @@ function extractWidget(
       };
     }
     case 'BARCODE': {
+      const source = ext?.source ?? 'dynamic';
+      if (source !== 'dynamic') return null;
+      const fieldId = ext?.fieldBinding ?? 'barcodeContent';
       return {
         id: widgetIdForObject(obj, 'barcode'),
         type: 'BARCODE',
-        fieldId: 'barcodeContent',
+        fieldId,
         ...widgetGeometry(obj),
         format: 'CODE128',
         showText: ext?.showText ?? true,
