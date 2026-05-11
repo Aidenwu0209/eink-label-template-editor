@@ -1,6 +1,8 @@
+const nativeLocaleLabels = { 'zh-CN': '中文', en: 'English', de: 'Deutsch', fr: 'Français', es: 'Español' } as const;
+
 export const messages = {
   'zh-CN': {
-    locale: { 'zh-CN': '中文', en: '英语', de: '德语', fr: '法语', es: '西语' },
+    locale: nativeLocaleLabels,
     market: {
       cn: '中国市场 · ¥',
       eu: '欧洲市场 · €',
@@ -429,7 +431,7 @@ export const messages = {
     },
   },
   en: {
-    locale: { 'zh-CN': 'Chinese', en: 'English', de: 'German', fr: 'French', es: 'Spanish' },
+    locale: nativeLocaleLabels,
     market: {
       cn: 'China · CNY',
       eu: 'Europe · EUR',
@@ -765,7 +767,7 @@ export const allMessages = {
   ...messages,
   de: {
     ...europeanBase,
-    locale: { 'zh-CN': 'Chinesisch', en: 'Englisch', de: 'Deutsch', fr: 'Französisch', es: 'Spanisch' },
+    locale: nativeLocaleLabels,
     market: {
       cn: 'China · CNY',
       eu: 'Europa · EUR',
@@ -1095,7 +1097,7 @@ export const allMessages = {
   },
   fr: {
     ...europeanBase,
-    locale: { 'zh-CN': 'Chinois', en: 'Anglais', de: 'Allemand', fr: 'Français', es: 'Espagnol' },
+    locale: nativeLocaleLabels,
     market: {
       cn: 'Chine · CNY',
       eu: 'Europe · EUR',
@@ -1425,7 +1427,7 @@ export const allMessages = {
   },
   es: {
     ...europeanBase,
-    locale: { 'zh-CN': 'Chino', en: 'Inglés', de: 'Alemán', fr: 'Francés', es: 'Español' },
+    locale: nativeLocaleLabels,
     market: {
       cn: 'China · CNY',
       eu: 'Europa · EUR',

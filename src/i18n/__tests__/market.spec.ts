@@ -64,6 +64,20 @@ describe('regional i18n and market profiles', () => {
     }
   });
 
+  it('keeps language selector labels in each language native name', () => {
+    const expected = {
+      'zh-CN': '中文',
+      en: 'English',
+      de: 'Deutsch',
+      fr: 'Français',
+      es: 'Español',
+    };
+
+    for (const locale of LOCALES) {
+      expect(allMessages[locale].locale).toEqual(expected);
+    }
+  });
+
   it('localizes major UI groups instead of falling back to English for European languages', () => {
     const english = allMessages.en;
 
