@@ -93,7 +93,7 @@ let layerClickTimer: number | null = null;
 const screenDisplayName = computed(() => t(`screen.${config.screen.type}`));
 const screenInfo = computed(() => {
   const modeLabel = config.mode === 'edit' ? t('editor.modeEdit') : t('editor.modeCreate');
-  return `${modeLabel} | ${config.canvas.width}×${config.canvas.height} | ${screenDisplayName.value}`;
+  return `${modeLabel} | ${screenDisplayName.value}`;
 });
 const canvasSizeValue = computed(() => `${config.canvas.width}x${config.canvas.height}`);
 const isCurrentCanvasSizePreset = computed(() => {
