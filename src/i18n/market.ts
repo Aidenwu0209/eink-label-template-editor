@@ -1,6 +1,6 @@
 import type { PreviewData } from '@/boot/types';
 
-export const LOCALES = ['zh-CN', 'en', 'de', 'fr', 'es'] as const;
+export const LOCALES = ['zh-CN', 'en', 'de', 'fr', 'es', 'ru'] as const;
 export type LocaleCode = (typeof LOCALES)[number];
 
 export const MARKETS = ['CN', 'EU'] as const;
@@ -148,6 +148,7 @@ export function normalizeLocale(value: unknown): LocaleCode | null {
   if (lower.startsWith('de')) return 'de';
   if (lower.startsWith('fr')) return 'fr';
   if (lower.startsWith('es')) return 'es';
+  if (lower.startsWith('ru')) return 'ru';
   return LOCALES.includes(normalized as LocaleCode) ? normalized as LocaleCode : null;
 }
 
