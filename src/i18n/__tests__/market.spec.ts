@@ -38,6 +38,7 @@ describe('regional i18n and market profiles', () => {
     expect(inferLocaleFromLanguage('de-DE')).toBe('de');
     expect(inferLocaleFromLanguage('fr-FR')).toBe('fr');
     expect(inferLocaleFromLanguage('es-ES')).toBe('es');
+    expect(inferLocaleFromLanguage('ru-RU')).toBe('ru');
     expect(inferLocaleFromLanguage('en-GB')).toBe('en');
     expect(inferLocaleFromLanguage('ja-JP')).toBe('en');
   });
@@ -59,6 +60,9 @@ describe('regional i18n and market profiles', () => {
       expect(pack.objects.QRCODE).toBeTruthy();
       expect(pack.starter.productName).toBeTruthy();
       expect(pack.market.samplePrice).toBeTruthy();
+      expect(pack.ocr.localInitTimeout).toBeTruthy();
+      expect(pack.ocr.localPredictTimeout).toBeTruthy();
+      expect(pack.ocr.apiTimeout).toBeTruthy();
       expect(pack.errors.saveConfig).toBeTruthy();
       expect(pack.errors.customFieldEmpty).toBeTruthy();
     }
@@ -71,6 +75,7 @@ describe('regional i18n and market profiles', () => {
       de: 'Deutsch',
       fr: 'Français',
       es: 'Español',
+      ru: 'Русский',
     };
 
     for (const locale of LOCALES) {
@@ -81,13 +86,14 @@ describe('regional i18n and market profiles', () => {
   it('localizes major UI groups instead of falling back to English for European languages', () => {
     const english = allMessages.en;
 
-    for (const locale of ['de', 'fr', 'es'] as const) {
+    for (const locale of ['de', 'fr', 'es', 'ru'] as const) {
       const pack = allMessages[locale];
       expect(pack.editor.onboardingEU).not.toBe(english.editor.onboardingEU);
       expect(pack.toolbar.addElements).not.toBe(english.toolbar.addElements);
       expect(pack.toolbar.tools.PRICE.title).not.toBe(english.toolbar.tools.PRICE.title);
       expect(pack.properties.emptyTitle).not.toBe(english.properties.emptyTitle);
       expect(pack.ocr.start).not.toBe(english.ocr.start);
+      expect(pack.ocr.localInitTimeout).not.toBe(english.ocr.localInitTimeout);
       expect(pack.errors.saveConfig).not.toBe(english.errors.saveConfig);
       expect(pack.starter.productName).not.toBe(english.starter.productName);
     }
