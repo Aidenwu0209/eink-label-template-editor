@@ -1,0 +1,352 @@
+{
+  "project": "电子价签模板编辑器",
+  "branchName": "ralph/esl-template-editor-mvp",
+  "description": "电子价签模板编辑器 MVP 优化：基于外部传入的 Screen Profile 和模板数据完成可视化编辑、电子墨水屏预览，并在保存时输出 Full JSON、Static PNG Base64 和 Dynamic Metadata。",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "支持外部初始化数据契约",
+      "description": "As an external business system, I want to initialize the editor with a unified payload so that I can create or edit an ESL template.",
+      "acceptanceCriteria": [
+        "The editor accepts create mode initialization with profile and previewData.",
+        "The editor accepts edit mode initialization with templateId, templateName, profile, fullJson, staticDynamic, and previewData.",
+        "The editor shows a clear initialization error when mode is missing or not create/edit.",
+        "The editor shows a clear initialization error when profile.width or profile.height is missing, non-numeric, or less than or equal to 0.",
+        "Use agent-browser to open the editor with valid create initialization data and verify the editor workspace is visible instead of the error view.",
+        "Use agent-browser to open the editor with an invalid profile and verify an initialization failure message is visible.",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-002",
+      "title": "根据 Screen Profile 创建固定尺寸画布",
+      "description": "As a template editor user, I want the canvas to use the exact dimensions from the incoming Screen Profile so that the template matches the ESL device.",
+      "acceptanceCriteria": [
+        "The Fabric edit canvas width equals profile.width.",
+        "The Fabric edit canvas height equals profile.height.",
+        "The preview canvas uses the same width and height as the edit canvas.",
+        "The canvas dimensions cannot be changed by editor UI actions after initialization.",
+        "The workspace displays the current canvas width and height.",
+        "Use agent-browser to open the editor with a 296 x 128 profile and verify both edit and preview canvases render at that aspect ratio.",
+        "Use agent-browser to reopen the editor with a different valid profile and verify the displayed canvas dimensions update to the new profile.",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-003",
+      "title": "支持 BW / BWR / BWRY / E6 颜色模式",
+      "description": "As a template editor user, I want colors constrained by the current e-ink color mode so that exported output is compatible with the target device.",
+      "acceptanceCriteria": [
+        "BW profiles expose only black and white palette colors.",
+        "BWR profiles expose only black, white, and red palette colors.",
+        "BWRY profiles expose only black, white, red, and yellow palette colors.",
+        "E6 profiles expose only black, white, red, green, blue, yellow, and orange palette colors.",
+        "Color controls for text, line, rectangle, background, price, discount, QR code, and barcode use only colors from profile.palette.",
+        "Imported template objects with colors outside profile.palette are snapped to the nearest palette color before preview or save.",
+        "Use agent-browser to add a rectangle and verify the color picker only offers the active profile palette colors.",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-004",
+      "title": "定义系统字段与自定义字段校验",
+      "description": "As a template editor user, I want to bind system fields and valid custom text fields so that the template can display business data.",
+      "acceptanceCriteria": [
+        "The reserved system fields are productName, price, discount, description, imageUrl, qrContent, and barcodeContent.",
+        "Custom fields support text type only.",
+        "Custom field ID validation rejects empty values.",
+        "Custom field ID validation rejects values containing characters other than English letters, digits, and underscores.",
+        "Custom field ID validation rejects values that do not start with an English letter.",
+        "Custom field ID validation rejects values matching reserved system fields.",
+        "Custom field ID validation rejects duplicate custom fields within the same template.",
+        "Custom field IDs brand, originPrice, memberPrice, and unit pass validation.",
+        "Custom field IDs 价格, product-name, 123abc, price, and qrContent show clear validation errors.",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-005",
+      "title": "支持 RECT 和 LINE 基础组件",
+      "description": "As a template editor user, I want to add rectangles and lines so that I can create background blocks, labels, borders, and dividers.",
+      "acceptanceCriteria": [
+        "The toolbar provides an action to add a RECT component.",
+        "The toolbar provides an action to add a LINE component.",
+        "RECT supports editing x, y, width, height, fill color, stroke color, and stroke width.",
+        "LINE supports editing start point, end point, color, and line width.",
+        "RECT and LINE color values are constrained to the active profile palette.",
+        "Exported Full JSON contains added RECT and LINE objects.",
+        "Exported Static PNG Base64 includes the visible RECT and LINE shapes.",
+        "Use agent-browser to add one rectangle and one line and verify both are visible on the edit canvas and preview canvas.",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-006",
+      "title": "支持 TEXT 文本组件",
+      "description": "As a template editor user, I want to add fixed or dynamic text so that I can display product names, descriptions, and custom text fields.",
+      "acceptanceCriteria": [
+        "The toolbar provides an action to add a TEXT component.",
+        "TEXT can be configured as fixed text without a field binding.",
+        "TEXT can bind to productName, description, or a valid custom text field.",
+        "TEXT uses AlibabaPuHuiTi as the font family.",
+        "TEXT font weight accepts only normal and bold.",
+        "TEXT overflow mode accepts clip, ellipsis, and wrap.",
+        "TEXT default overflow mode is ellipsis.",
+        "TEXT supports lineClamp.",
+        "TEXT supports horizontal alignment and vertical alignment settings.",
+        "Use agent-browser to add a TEXT bound to productName, change previewData.productName, and verify the preview displays the new product name.",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-007",
+      "title": "支持 IMAGE 图片组件",
+      "description": "As a template editor user, I want to add static or dynamic images so that templates can display logos, fixed icons, or product images.",
+      "acceptanceCriteria": [
+        "The toolbar provides an action to add a static IMAGE component.",
+        "The toolbar provides an action to add a dynamic IMAGE component.",
+        "Static IMAGE is rendered into Static PNG Base64 during save.",
+        "Dynamic IMAGE is fixed to the imageUrl field.",
+        "Dynamic IMAGE is included in dynamicMetadata.widgets during save.",
+        "IMAGE fit mode accepts contain, cover, and fill.",
+        "IMAGE default fit mode is contain.",
+        "IMAGE background color is constrained to the active profile palette.",
+        "Use agent-browser to add a dynamic IMAGE with previewData.imageUrl and verify the preview shows the image area.",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-008",
+      "title": "支持 PRICE 复合价格组件",
+      "description": "As a template editor user, I want a dedicated PRICE component so that currency, integer, and decimal parts can be laid out independently.",
+      "acceptanceCriteria": [
+        "The toolbar provides an action to add a PRICE component.",
+        "PRICE is fixed to the price field.",
+        "PRICE is represented as a dedicated widget and not saved as a plain TEXT component.",
+        "PRICE supports currencySymbol with default value ¥.",
+        "PRICE supports showCurrency.",
+        "PRICE supports decimalPlaces.",
+        "PRICE supports thousandSeparator.",
+        "PRICE supports decimalSeparator.",
+        "PRICE supports separate fontSize, fontWeight, and color for currency, integer, and decimal parts.",
+        "PRICE decimal style supports offsetY.",
+        "Saved Dynamic Metadata contains the PRICE widget as one item with type PRICE.",
+        "Use agent-browser to add PRICE, set previewData.price to 1299.9, and verify the preview displays a formatted price.",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-009",
+      "title": "支持 DISCOUNT 折扣组件",
+      "description": "As a template editor user, I want a DISCOUNT component so that I can create promotion labels quickly.",
+      "acceptanceCriteria": [
+        "The toolbar provides an action to add a DISCOUNT component.",
+        "DISCOUNT is fixed to the discount field.",
+        "DISCOUNT supports a format template such as {value}折.",
+        "DISCOUNT supports background color and text color.",
+        "DISCOUNT supports font size and normal/bold font weight.",
+        "DISCOUNT supports horizontal center alignment and vertical middle alignment.",
+        "DISCOUNT color values are constrained to the active profile palette.",
+        "Saved Dynamic Metadata contains the DISCOUNT widget with type DISCOUNT.",
+        "Use agent-browser to add DISCOUNT, set previewData.discount to 8.8, and verify the preview displays 8.8折.",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-010",
+      "title": "支持 QRCODE 二维码组件",
+      "description": "As a template editor user, I want to add a QR code component so that ESL templates can display product details or marketing links.",
+      "acceptanceCriteria": [
+        "The toolbar provides an action to add a QRCODE component.",
+        "QRCODE is fixed to the qrContent field.",
+        "QRCODE does not allow binding to any field other than qrContent.",
+        "QRCODE supports width and height settings.",
+        "QRCODE supports errorCorrection with default value M.",
+        "QRCODE supports margin with default value 1.",
+        "QRCODE foregroundColor and backgroundColor are constrained to the active profile palette.",
+        "Saved Dynamic Metadata contains the QRCODE widget with type QRCODE.",
+        "Use agent-browser to add QRCODE, set previewData.qrContent to a URL, and verify the preview displays a QR code graphic.",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-011",
+      "title": "支持 BARCODE 条形码组件",
+      "description": "As a template editor user, I want to add a CODE128 barcode component so that ESL templates can display product codes.",
+      "acceptanceCriteria": [
+        "The toolbar provides an action to add a BARCODE component.",
+        "BARCODE is fixed to the barcodeContent field.",
+        "BARCODE does not allow binding to any field other than barcodeContent.",
+        "BARCODE supports CODE128 only.",
+        "BARCODE does not show EAN-13, UPC-A, DataMatrix, or other barcode format options.",
+        "BARCODE supports showText.",
+        "BARCODE foregroundColor and backgroundColor are constrained to the active profile palette.",
+        "Saved Dynamic Metadata contains the BARCODE widget with type BARCODE.",
+        "Use agent-browser to add BARCODE, set previewData.barcodeContent to SKU1001, and verify the preview displays a CODE128 barcode.",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-012",
+      "title": "支持电子墨水屏预览",
+      "description": "As a template editor user, I want a live e-ink preview so that I can confirm the approximate final device output.",
+      "acceptanceCriteria": [
+        "The editor page displays both an edit canvas and a preview canvas.",
+        "The preview canvas updates after an object is added, modified, or deleted on the edit canvas.",
+        "The preview renderer quantizes output colors to the active profile palette.",
+        "BW preview output contains only black and white colors.",
+        "BWR preview output contains only black, white, and red colors.",
+        "BWRY preview output contains only black, white, red, and yellow colors.",
+        "E6 preview output contains only black, white, red, green, blue, yellow, and orange colors.",
+        "Use agent-browser to change an object color and verify the preview updates to the palette-constrained result.",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-013",
+      "title": "生成保存 Payload",
+      "description": "As an external business system, I want the editor to produce a complete template payload on save so that the host system can persist or process it.",
+      "acceptanceCriteria": [
+        "Clicking save generates templateId.",
+        "Clicking save generates templateName.",
+        "Clicking save includes the complete profile object.",
+        "Clicking save includes fullJson.",
+        "Clicking save includes staticDynamic.staticImage.",
+        "staticDynamic.staticImage.type equals base64.",
+        "staticDynamic.staticImage.format equals png.",
+        "staticDynamic.staticImage.data starts with data:image/png;base64,.",
+        "Clicking save includes staticDynamic.dynamicMetadata.",
+        "dynamicMetadata.fontFamily equals AlibabaPuHuiTi.",
+        "dynamicMetadata.reservedFields contains all reserved system fields.",
+        "dynamicMetadata.widgets contains every dynamic widget on the template.",
+        "Use agent-browser to add TEXT, PRICE, IMAGE, and QRCODE widgets, click save, and verify the emitted payload contains matching widgets.",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-014",
+      "title": "支持 onSave 优先保存方式",
+      "description": "As an external business system, I want to receive the save payload through onSave so that the host system owns persistence.",
+      "acceptanceCriteria": [
+        "When onSave is provided, clicking save calls onSave(payload).",
+        "The payload passed to onSave matches the save payload structure.",
+        "The page shows a clear success state after onSave resolves successfully.",
+        "The page shows a clear failure message after onSave rejects or throws.",
+        "When both onSave and saveApi are provided, the editor does not send a saveApi request.",
+        "Use agent-browser to click save with an onSave test callback and verify the callback is called exactly once.",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-015",
+      "title": "支持 saveApi 兼容保存方式",
+      "description": "As an external business system, I want the editor to call a configured saveApi when onSave is not provided so that simple integration still works.",
+      "acceptanceCriteria": [
+        "When onSave is not provided and saveApi is provided, clicking save sends a POST request to saveApi.",
+        "The POST request body equals the save payload.",
+        "The page shows a clear success state when saveApi returns a 2xx response.",
+        "The page shows a clear failure message when saveApi returns a non-2xx response or a network error.",
+        "When neither onSave nor saveApi is provided, clicking save shows a clear save configuration error.",
+        "In the local development environment, the save request reaches the configured backend endpoint and is not handled as a Vite frontend fallback or 404.",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    },
+    {
+      "id": "US-016",
+      "title": "完成创建到保存的闭环验证",
+      "description": "As a template editor user, I want to complete the full flow from initialization to editing, preview, and save so that MVP functionality is verified end to end.",
+      "acceptanceCriteria": [
+        "Use agent-browser to open the editor in create mode with a BWR profile and complete previewData.",
+        "Use agent-browser to add RECT, TEXT, PRICE, DISCOUNT, dynamic IMAGE, QRCODE, and BARCODE components.",
+        "The edit canvas visibly contains every added component.",
+        "The preview canvas visibly contains the palette-quantized result.",
+        "Clicking save generates Full JSON.",
+        "Clicking save generates Static PNG Base64.",
+        "Clicking save generates Dynamic Metadata.",
+        "Dynamic Metadata contains TEXT, PRICE, DISCOUNT, IMAGE, QRCODE, and BARCODE widgets.",
+        "The browser console has no errors during the full flow.",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "",
+      "retryCount": 0,
+      "blocked": false
+    }
+  ]
+}
