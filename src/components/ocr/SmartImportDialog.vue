@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { BootConfig } from '@/boot/types';
 import { recognizePriceTag } from '@/ocr/providers';
 import type { OcrLineItem, OcrLineRole, OcrProviderMode, RecognizedPriceTag } from '@/ocr/types';
@@ -8,34 +9,34 @@ import type { SmartTemplateKind } from '@/ocr/templatePlanner';
 const OCR_API_STORAGE_KEY = 'eink-label-template-editor.ocrApi.v1';
 
 const FIELD_DEFS = [
-  { key: 'productName', label: '商品名称', type: 'text' },
-  { key: 'brand', label: '品牌', type: 'text' },
-  { key: 'price', label: '主价格', type: 'number' },
-  { key: 'memberPrice', label: '会员价', type: 'number' },
-  { key: 'originalPrice', label: '原价', type: 'number' },
-  { key: 'discount', label: '折扣', type: 'text' },
-  { key: 'spec', label: '规格', type: 'text' },
-  { key: 'description', label: '描述', type: 'text' },
-  { key: 'origin', label: '产地', type: 'text' },
-  { key: 'promoText', label: '促销文案', type: 'text' },
-  { key: 'barcodeContent', label: '条码内容', type: 'text' },
-  { key: 'qrContent', label: '二维码内容', type: 'text' },
+  { key: 'productName', labelKey: 'fields.productName', type: 'text' },
+  { key: 'brand', labelKey: 'fields.brand', type: 'text' },
+  { key: 'price', labelKey: 'ocr.rolePrice', type: 'number' },
+  { key: 'memberPrice', labelKey: 'fields.memberPrice', type: 'number' },
+  { key: 'originalPrice', labelKey: 'fields.originalPrice', type: 'number' },
+  { key: 'discount', labelKey: 'fields.discount', type: 'text' },
+  { key: 'spec', labelKey: 'fields.spec', type: 'text' },
+  { key: 'description', labelKey: 'fields.description', type: 'text' },
+  { key: 'origin', labelKey: 'fields.origin', type: 'text' },
+  { key: 'promoText', labelKey: 'fields.promoText', type: 'text' },
+  { key: 'barcodeContent', labelKey: 'fields.barcodeContent', type: 'text' },
+  { key: 'qrContent', labelKey: 'fields.qrContent', type: 'text' },
 ] as const;
 
-const LINE_ROLE_OPTIONS: Array<{ value: OcrLineRole; label: string }> = [
-  { value: 'productName', label: '商品名' },
-  { value: 'brand', label: '品牌' },
-  { value: 'price', label: '主价格' },
-  { value: 'memberPrice', label: '会员价' },
-  { value: 'originalPrice', label: '原价' },
-  { value: 'discount', label: '折扣' },
-  { value: 'spec', label: '规格' },
-  { value: 'description', label: '描述' },
-  { value: 'origin', label: '产地' },
-  { value: 'promoText', label: '促销' },
-  { value: 'barcodeContent', label: '条码' },
-  { value: 'qrContent', label: '二维码' },
-  { value: 'customText', label: '普通文本' },
+const LINE_ROLE_OPTIONS: Array<{ value: OcrLineRole; labelKey: string }> = [
+  { value: 'productName', labelKey: 'ocr.roleProductName' },
+  { value: 'brand', labelKey: 'ocr.roleBrand' },
+  { value: 'price', labelKey: 'ocr.rolePrice' },
+  { value: 'memberPrice', labelKey: 'ocr.roleMemberPrice' },
+  { value: 'originalPrice', labelKey: 'ocr.roleOriginalPrice' },
+  { value: 'discount', labelKey: 'ocr.roleDiscount' },
+  { value: 'spec', labelKey: 'ocr.roleSpec' },
+  { value: 'description', labelKey: 'ocr.roleDescription' },
+  { value: 'origin', labelKey: 'ocr.roleOrigin' },
+  { value: 'promoText', labelKey: 'ocr.rolePromoText' },
+  { value: 'barcodeContent', labelKey: 'ocr.roleBarcodeContent' },
+  { value: 'qrContent', labelKey: 'ocr.roleQrContent' },
+  { value: 'customText', labelKey: 'ocr.roleCustomText' },
 ] as const;
 
 const PRICE_ROLES = new Set<OcrLineRole>(['price', 'memberPrice', 'originalPrice']);
@@ -47,6 +48,8 @@ const props = defineProps<{
   config: BootConfig;
   hasExistingObjects: boolean;
 }>();
+
+const { t } = useI18n();
 
 const emit = defineEmits<{
   close: [];
@@ -69,20 +72,26 @@ const activeLineId = ref<string | null>(null);
 const fieldRows = computed(() => {
   const known = FIELD_DEFS.map((field) => ({
     ...field,
+    label: t(field.labelKey),
     value: editableValues.value[field.key] ?? '',
   }));
   const knownKeys = new Set(FIELD_DEFS.map((field) => field.key));
   const custom = Object.entries(editableValues.value)
     .filter(([key, value]) => !knownKeys.has(key as any) && value)
-    .map(([key, value]) => ({ key, label: `自定义字段 ${key}`, type: 'text' as const, value }));
+    .map(([key, value]) => ({ key, label: t('ocr.customField', { key }), type: 'text' as const, value }));
   return [...known, ...custom];
 });
 
 const recognitionSummary = computed(() => {
-  if (!recognized.value) return '等待识别';
+  if (!recognized.value) return t('ocr.waiting');
   const percent = Math.round(recognized.value.confidence * 100);
   const included = editableLineItems.value.filter((line) => line.includeInTemplate !== false).length;
-  return `${recognized.value.provider} · ${editableLineItems.value.length} 行 / ${included} 个生成 · ${percent}%`;
+  return t('ocr.summary', {
+    provider: recognized.value.provider,
+    rows: editableLineItems.value.length,
+    included,
+    confidence: percent,
+  });
 });
 
 const overlayItems = computed(() => editableLineItems.value);
@@ -121,7 +130,7 @@ function handleFileChange(event: Event): void {
 
   if (!file) return;
   if (!file.type.startsWith('image/')) {
-    errorMessage.value = '请选择价签图片文件。';
+    errorMessage.value = t('ocr.selectImageFile');
     input.value = '';
     return;
   }
@@ -133,7 +142,7 @@ function handleFileChange(event: Event): void {
 async function runRecognition(): Promise<void> {
   const file = selectedFile.value;
   if (!file) {
-    errorMessage.value = '请先上传价签图片。';
+    errorMessage.value = t('ocr.uploadFirst');
     return;
   }
 
@@ -195,7 +204,7 @@ function cloneLineItems(result: RecognizedPriceTag): OcrLineItem[] {
     role: 'customText',
     fieldKey: `ocrText${index + 1}`,
     includeInTemplate: true,
-    warnings: ['历史 OCR 结果缺少行映射，已按普通文本加入模板。'],
+    warnings: [t('ocr.historicalLineWarning')],
   }));
 }
 
@@ -260,7 +269,8 @@ function defaultFieldKeyForRole(role: OcrLineRole, index: number): string | null
 }
 
 function lineRoleLabel(role: OcrLineRole): string {
-  return LINE_ROLE_OPTIONS.find((option) => option.value === role)?.label ?? role;
+  const option = LINE_ROLE_OPTIONS.find((item) => item.value === role);
+  return option ? t(option.labelKey) : role;
 }
 
 function isPriceLineRole(role: OcrLineRole): role is PriceLineRole {
@@ -281,7 +291,7 @@ function parseNumeric(value: string): number | null {
 function applyTemplate(): void {
   const base = recognized.value;
   if (!base) return;
-  if (props.hasExistingObjects && !window.confirm('生成智能模板会替换当前画布内容，是否继续？')) {
+  if (props.hasExistingObjects && !window.confirm(t('ocr.confirmReplace'))) {
     return;
   }
 
@@ -376,14 +386,14 @@ function overlayBoxStyle(item: OcrLineItem) {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="ocr-backdrop" role="dialog" aria-modal="true" aria-label="智能导入价签">
+    <div v-if="open" class="ocr-backdrop" role="dialog" aria-modal="true" :aria-label="t('ocr.dialogLabel')">
       <section class="ocr-dialog">
         <header class="ocr-header">
           <div>
             <span class="ocr-kicker">PaddleOCR</span>
-            <h2>智能导入价签</h2>
+            <h2>{{ t('ocr.title') }}</h2>
           </div>
-          <button class="icon-btn" type="button" title="关闭" @click="closeDialog">×</button>
+          <button class="icon-btn" type="button" :title="t('common.close')" @click="closeDialog">×</button>
         </header>
 
         <div class="ocr-body">
@@ -397,14 +407,14 @@ function overlayBoxStyle(item: OcrLineItem) {
                 @change="handleFileChange"
               />
               <button class="upload-btn" type="button" @click="triggerFilePicker">
-                {{ selectedFile ? '更换价签图片' : '上传价签图片' }}
+                {{ selectedFile ? t('ocr.replaceImage') : t('ocr.upload') }}
               </button>
               <span v-if="selectedFile" class="file-name">{{ selectedFile.name }}</span>
             </div>
 
             <div class="preview-frame">
               <div v-if="previewUrl" class="preview-raster">
-                <img :src="previewUrl" alt="价签图片预览" />
+                <img :src="previewUrl" :alt="t('ocr.previewAlt')" />
                 <div v-if="overlayItems.length" class="ocr-overlay">
                   <span
                     v-for="item in overlayItems"
@@ -421,23 +431,23 @@ function overlayBoxStyle(item: OcrLineItem) {
                   ></span>
                 </div>
               </div>
-              <div v-if="!previewUrl" class="preview-empty">未选择图片</div>
+              <div v-if="!previewUrl" class="preview-empty">{{ t('ocr.emptyPreview') }}</div>
             </div>
           </aside>
 
           <section class="ocr-right">
             <div class="settings-grid">
               <label class="setting-field">
-                <span>识别方式</span>
+                <span>{{ t('ocr.provider') }}</span>
                 <select v-model="providerMode">
-                  <option value="auto">自动：本地优先，必要时 API 兜底</option>
-                  <option value="browser-local">本地 PaddleOCR.js</option>
-                  <option value="paddle-api">PaddleOCR API</option>
+                  <option value="auto">{{ t('ocr.providerAuto') }}</option>
+                  <option value="browser-local">{{ t('ocr.providerLocal') }}</option>
+                  <option value="paddle-api">{{ t('ocr.providerApi') }}</option>
                 </select>
               </label>
 
               <label class="setting-field">
-                <span>API 地址</span>
+                <span>{{ t('ocr.apiEndpoint') }}</span>
                 <input
                   v-model="apiEndpoint"
                   type="text"
@@ -447,22 +457,22 @@ function overlayBoxStyle(item: OcrLineItem) {
               </label>
 
               <label class="setting-field">
-                <span>生成模板</span>
+                <span>{{ t('ocr.templateKind') }}</span>
                 <select v-model="templateKind">
-                  <option value="restore">还原原图布局</option>
-                  <option value="auto">自动固定模板</option>
-                  <option value="standard">普通价签</option>
-                  <option value="promotion">促销价签</option>
-                  <option value="member">会员价签</option>
-                  <option value="barcode">带条码</option>
-                  <option value="qr">带二维码</option>
+                  <option value="restore">{{ t('ocr.templateRestore') }}</option>
+                  <option value="auto">{{ t('ocr.templateAuto') }}</option>
+                  <option value="standard">{{ t('ocr.templateStandard') }}</option>
+                  <option value="promotion">{{ t('ocr.templatePromotion') }}</option>
+                  <option value="member">{{ t('ocr.templateMember') }}</option>
+                  <option value="barcode">{{ t('ocr.templateBarcode') }}</option>
+                  <option value="qr">{{ t('ocr.templateQr') }}</option>
                 </select>
               </label>
             </div>
 
             <div class="run-row">
               <button class="primary-btn" type="button" :disabled="isRecognizing || !selectedFile" @click="runRecognition">
-                {{ isRecognizing ? '识别中...' : '开始识别' }}
+                {{ isRecognizing ? t('ocr.recognizing') : t('ocr.start') }}
               </button>
               <span class="recognition-summary">{{ recognitionSummary }}</span>
             </div>
@@ -474,8 +484,8 @@ function overlayBoxStyle(item: OcrLineItem) {
 
             <div class="field-table">
               <div class="field-row field-head">
-                <span>字段</span>
-                <span>识别值</span>
+                <span>{{ t('ocr.field') }}</span>
+                <span>{{ t('ocr.recognizedValue') }}</span>
               </div>
               <label v-for="row in fieldRows" :key="row.key" class="field-row">
                 <span>{{ row.label }}</span>
@@ -490,15 +500,15 @@ function overlayBoxStyle(item: OcrLineItem) {
 
             <div v-if="editableLineItems.length" class="line-table">
               <div class="line-head">
-                <span>OCR 明细</span>
-                <span>{{ editableLineItems.length }} 行，默认全部生成</span>
+                <span>{{ t('ocr.details') }}</span>
+                <span>{{ t('ocr.detailsCount', { count: editableLineItems.length }) }}</span>
               </div>
               <div class="line-grid line-grid-head">
-                <span>生成</span>
-                <span>框</span>
-                <span>角色</span>
-                <span>文本</span>
-                <span>置信度</span>
+                <span>{{ t('ocr.include') }}</span>
+                <span>{{ t('ocr.box') }}</span>
+                <span>{{ t('ocr.role') }}</span>
+                <span>{{ t('ocr.text') }}</span>
+                <span>{{ t('ocr.confidence') }}</span>
               </div>
               <label
                 v-for="(line, index) in editableLineItems"
@@ -518,7 +528,7 @@ function overlayBoxStyle(item: OcrLineItem) {
                 </button>
                 <select :value="line.role" @change="updateLineRole(line.id, $event)">
                   <option v-for="option in LINE_ROLE_OPTIONS" :key="option.value" :value="option.value">
-                    {{ option.label }}
+                    {{ t(option.labelKey) }}
                   </option>
                 </select>
                 <input
@@ -536,8 +546,8 @@ function overlayBoxStyle(item: OcrLineItem) {
         </div>
 
         <footer class="ocr-footer">
-          <button class="ghost-btn" type="button" @click="closeDialog">取消</button>
-          <button class="primary-btn" type="button" :disabled="!recognized" @click="applyTemplate">生成可编辑模板</button>
+          <button class="ghost-btn" type="button" @click="closeDialog">{{ t('common.cancel') }}</button>
+          <button class="primary-btn" type="button" :disabled="!recognized" @click="applyTemplate">{{ t('ocr.apply') }}</button>
         </footer>
       </section>
     </div>
@@ -610,6 +620,8 @@ function overlayBoxStyle(item: OcrLineItem) {
 .ghost-btn,
 .primary-btn,
 .upload-btn {
+  min-width: 0;
+  white-space: nowrap;
   border: 1px solid var(--line-soft);
   border-radius: 10px;
   cursor: pointer;
@@ -658,6 +670,7 @@ function overlayBoxStyle(item: OcrLineItem) {
 .upload-panel {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 10px;
   padding: 10px;
 }
@@ -773,6 +786,8 @@ function overlayBoxStyle(item: OcrLineItem) {
 
 .setting-field span,
 .field-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 850;
@@ -812,11 +827,14 @@ function overlayBoxStyle(item: OcrLineItem) {
 .run-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 10px;
 }
 
 .recognition-summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 750;
@@ -848,7 +866,7 @@ function overlayBoxStyle(item: OcrLineItem) {
 
 .field-row {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
@@ -883,13 +901,18 @@ function overlayBoxStyle(item: OcrLineItem) {
   border-bottom: 1px solid var(--line-faint);
 }
 
+.line-head span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .line-head span:first-child {
   color: var(--text-main);
 }
 
 .line-grid {
   display: grid;
-  grid-template-columns: 42px 42px 86px minmax(0, 1fr) 54px;
+  grid-template-columns: 42px 42px minmax(78px, 94px) minmax(0, 1fr) 54px;
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
@@ -908,6 +931,12 @@ function overlayBoxStyle(item: OcrLineItem) {
   background: rgba(27, 30, 36, 0.98);
   font-size: 11px;
   font-weight: 850;
+}
+
+.line-grid-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .line-row {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useScreenStore } from '@/stores/screenStore';
 import { useEditorStore, type SnippetKind, type ToolKind } from '@/stores/editorStore';
 import FabricCanvas from '@/components/canvas/FabricCanvas.vue';
@@ -11,6 +12,15 @@ import { getValidCustomFieldIdsFromPreviewData } from '@/fields';
 import type { FabricJSON } from '@/boot/types';
 import type { RecognizedPriceTag } from '@/ocr/types';
 import type { SmartTemplateKind } from '@/ocr/templatePlanner';
+import {
+  LOCALES,
+  MARKETS,
+  getMarketProfile,
+  setAppLocale,
+  writeStoredRegionalPreferences,
+  type LocaleCode,
+  type MarketCode,
+} from '@/i18n';
 
 type LocalTemplateRecord = {
   id: string;
@@ -37,6 +47,7 @@ const TOOLBOX_MIN_WIDTH = 96;
 const TOOLBOX_MAX_WIDTH = 360;
 const TOOLBOX_COLLAPSED_WIDTH = 56;
 const RECENT_TOOL_LIMIT = 6;
+const MARKET_SAMPLE_DATE = new Date(2026, 4, 11);
 const CANVAS_SIZE_PRESETS = [
   { label: '296×128', width: 296, height: 128 },
   { label: '152×60', width: 152, height: 60 },
@@ -47,7 +58,11 @@ const CANVAS_SIZE_PRESETS = [
 
 const screenStore = useScreenStore();
 const editorStore = useEditorStore();
+const { t } = useI18n();
 const config = screenStore.bootConfig!;
+const selectedLocale = ref<LocaleCode>(config.locale);
+const selectedMarket = ref<MarketCode>(config.market);
+const activeMarketProfile = computed(() => getMarketProfile(selectedMarket.value));
 const fabricCanvasRef = ref<InstanceType<typeof FabricCanvas>>();
 const editorShellRef = ref<HTMLElement>();
 const workspaceRef = ref<HTMLElement>();
@@ -71,12 +86,14 @@ const isToolboxResizing = ref(false);
 const isToolDropTarget = ref(false);
 const showSmartImportDialog = ref(false);
 const isPreviewOverlayOpen = ref(false);
+const onboardingStorageKey = computed(() => `eink-label-template-editor.onboarding.${selectedLocale.value}.${selectedMarket.value}`);
+const showOnboarding = ref(localStorage.getItem(`eink-label-template-editor.onboarding.${config.locale}.${config.market}`) !== 'dismissed');
 let layerClickTimer: number | null = null;
 
+const screenDisplayName = computed(() => t(`screen.${config.screen.type}`));
 const screenInfo = computed(() => {
-  const p = config.screen.profile;
-  const modeLabel = config.mode === 'edit' ? '编辑' : '新建';
-  return `${modeLabel} | ${config.canvas.width}×${config.canvas.height} | ${p.displayName}`;
+  const modeLabel = config.mode === 'edit' ? t('editor.modeEdit') : t('editor.modeCreate');
+  return `${modeLabel} | ${config.canvas.width}×${config.canvas.height} | ${screenDisplayName.value}`;
 });
 const canvasSizeValue = computed(() => `${config.canvas.width}x${config.canvas.height}`);
 const isCurrentCanvasSizePreset = computed(() => {
@@ -84,6 +101,25 @@ const isCurrentCanvasSizePreset = computed(() => {
     preset.width === config.canvas.width
     && preset.height === config.canvas.height
   ));
+});
+const marketSummaryItems = computed(() => {
+  const profile = activeMarketProfile.value;
+  return [
+    { label: t('market.currency'), value: `${profile.price.currencyCode} ${profile.price.currencySymbol}` },
+    { label: t('market.samplePrice'), value: formatMarketSamplePrice(profile.samplePreviewData.price) },
+    {
+      label: t('market.sampleDate'),
+      value: new Intl.DateTimeFormat(profile.dateLocale, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(MARKET_SAMPLE_DATE),
+    },
+    {
+      label: t('market.discountFormat'),
+      value: profile.discountFormatTemplate.replace('{value}', String(profile.samplePreviewData.discount ?? '')),
+    },
+  ];
 });
 
 const palette = computed(() => editorStore.getPalette());
@@ -99,42 +135,38 @@ const collapsedToolShortcuts = computed(() => {
   const ordered = [...recentTools.value, ...fallback];
   return Array.from(new Set(ordered)).slice(0, 4).map((kind) => ({
     kind,
-    ...TOOL_LABELS[kind],
+    ...toolLabel(kind),
   }));
 });
 
 const saveMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null);
-const OBJECT_TYPE_LABELS: Record<string, string> = {
-  RECT: '矩形框',
-  LINE: '直线',
-  TEXT: '文本',
-  PRICE: '价格',
-  DISCOUNT: '折扣',
-  IMAGE: '图片',
-  QRCODE: '二维码',
-  BARCODE: '条形码',
+const TOOL_MARKS: Record<ToolKind, string> = {
+  RECT: '□',
+  LINE: '/',
+  TEXT: 'T',
+  PRICE: '',
+  DISCOUNT: '%',
+  IMAGE_STATIC: 'IMG',
+  IMAGE_DYNAMIC: 'D',
+  QRCODE: 'QR',
+  BARCODE: 'BAR',
+};
+const SNIPPET_MARKS: Record<SnippetKind, string> = {
+  PRODUCT_TITLE: 'T',
+  SPEC_TEXT: 'S',
+  PROMO_TEXT: 'P',
+  ORIGINAL_PRICE: 'Was',
+  MEMBER_PRICE: 'VIP',
+  DISCOUNT_BADGE: '%',
+  DIVIDER_LINE: 'Line',
 };
 
-const TOOL_LABELS: Record<ToolKind, { label: string; mark: string }> = {
-  RECT: { label: '矩形框', mark: '□' },
-  LINE: { label: '直线', mark: '/' },
-  TEXT: { label: '文本', mark: 'T' },
-  PRICE: { label: '价格', mark: '¥' },
-  DISCOUNT: { label: '折扣', mark: '%' },
-  IMAGE_STATIC: { label: '上传图片', mark: 'IMG' },
-  IMAGE_DYNAMIC: { label: '图片字段', mark: 'D' },
-  QRCODE: { label: '二维码', mark: 'QR' },
-  BARCODE: { label: '条形码', mark: 'BAR' },
-};
-const SNIPPET_LABELS: Record<SnippetKind, { label: string; mark: string }> = {
-  PRODUCT_TITLE: { label: '商品标题', mark: '标题' },
-  SPEC_TEXT: { label: '规格说明', mark: '规' },
-  PROMO_TEXT: { label: '促销文案', mark: '促' },
-  ORIGINAL_PRICE: { label: '原价', mark: '原' },
-  MEMBER_PRICE: { label: '会员价', mark: '会' },
-  DISCOUNT_BADGE: { label: '折扣标签', mark: '折' },
-  DIVIDER_LINE: { label: '价签分隔线', mark: '线' },
-};
+function toolLabel(kind: ToolKind): { label: string; mark: string } {
+  return {
+    label: t(`toolbar.tools.${kind}.title`),
+    mark: kind === 'PRICE' ? activeMarketProfile.value.price.currencySymbol : TOOL_MARKS[kind],
+  };
+}
 
 const selectedObjectType = computed(() => {
   const obj = editorStore.selectedObject as any;
@@ -147,8 +179,8 @@ const selectedObjectType = computed(() => {
 
 const selectedObjectLabel = computed(() => {
   const type = selectedObjectType.value;
-  if (!type) return editorStore.hasActiveSelection ? '多个元素' : '未选择元素';
-  return OBJECT_TYPE_LABELS[type] ?? type;
+  if (!type) return editorStore.hasActiveSelection ? t('editor.multipleSelection') : t('editor.noSelection');
+  return t(`objects.${type}`);
 });
 
 const quickFields = computed(() => {
@@ -211,7 +243,7 @@ function loadEditorUiPreferences(): void {
   try {
     const parsed = JSON.parse(localStorage.getItem(RECENT_TOOLS_STORAGE_KEY) ?? '[]');
     if (Array.isArray(parsed)) {
-      recentTools.value = parsed.filter((kind): kind is ToolKind => kind in TOOL_LABELS).slice(0, RECENT_TOOL_LIMIT);
+      recentTools.value = parsed.filter((kind): kind is ToolKind => kind in TOOL_MARKS).slice(0, RECENT_TOOL_LIMIT);
     }
   } catch {
     recentTools.value = [];
@@ -234,7 +266,42 @@ function rememberTool(kind: ToolKind): void {
 function formatTemplateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  return new Intl.DateTimeFormat(activeMarketProfile.value.dateLocale, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatMarketSamplePrice(value: unknown): string {
+  const profile = activeMarketProfile.value.price;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return profile.showCurrency ? `${profile.currencySymbol}--` : '--';
+
+  const sign = numericValue < 0 ? '-' : '';
+  const [integerPart, decimalPart = ''] = Math.abs(numericValue).toFixed(profile.decimalPlaces).split('.');
+  const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, profile.thousandSeparator);
+  const formattedNumber = profile.decimalPlaces > 0
+    ? `${sign}${groupedInteger}${profile.decimalSeparator}${decimalPart}`
+    : `${sign}${groupedInteger}`;
+
+  return profile.showCurrency ? `${profile.currencySymbol}${formattedNumber}` : formattedNumber;
+}
+
+watch([selectedLocale, selectedMarket], ([locale, market]) => {
+  setAppLocale(locale);
+  writeStoredRegionalPreferences(locale, market);
+  config.locale = locale;
+  config.market = market;
+  config.marketProfile = getMarketProfile(market);
+  editorStore.applyRegionalPreferences(locale, market);
+  showOnboarding.value = localStorage.getItem(onboardingStorageKey.value) !== 'dismissed';
+}, { immediate: true });
+
+function dismissOnboarding(): void {
+  localStorage.setItem(onboardingStorageKey.value, 'dismissed');
+  showOnboarding.value = false;
 }
 
 function parseCanvasSizeInput(value: string): { width: number; height: number } | null {
@@ -262,11 +329,11 @@ async function handleCanvasSizeChange(event: Event): Promise<void> {
   if (!value) return;
 
   if (value === 'custom') {
-    const raw = window.prompt('输入画布尺寸，例如 296x128', `${config.canvas.width}x${config.canvas.height}`);
+    const raw = window.prompt(t('editor.customCanvasPrompt'), `${config.canvas.width}x${config.canvas.height}`);
     if (!raw) return;
     const parsed = parseCanvasSizeInput(raw);
     if (!parsed) {
-      saveMessage.value = { type: 'error', text: '画布尺寸格式不正确，请输入例如 296x128' };
+      saveMessage.value = { type: 'error', text: t('editor.customCanvasInvalid') };
       setTimeout(() => { saveMessage.value = null; }, 2600);
       return;
     }
@@ -279,8 +346,8 @@ async function handleCanvasSizeChange(event: Event): Promise<void> {
 }
 
 async function saveLocalTemplate(): Promise<void> {
-  const defaultName = config.templateName || `模板 ${new Date().toLocaleString()}`;
-  const name = window.prompt('保存为我的模板', defaultName)?.trim();
+  const defaultName = config.templateName || t('editor.defaultTemplateName', { date: new Date().toLocaleString(activeMarketProfile.value.dateLocale) });
+  const name = window.prompt(t('editor.templatePrompt'), defaultName)?.trim();
   if (!name) return;
 
   const data = await editorStore.exportCurrentTemplate();
@@ -294,7 +361,7 @@ async function saveLocalTemplate(): Promise<void> {
   };
   savedTemplates.value = [record, ...savedTemplates.value.filter((item) => item.name !== name)].slice(0, 20);
   persistLocalTemplates();
-  saveMessage.value = { type: 'success', text: `已保存到我的模板：${name}` };
+  saveMessage.value = { type: 'success', text: t('editor.localSaveSuccess', { name }) };
   setTimeout(() => { saveMessage.value = null; }, 2400);
 }
 
@@ -345,10 +412,10 @@ function parseDraggedLibraryItem(event: DragEvent): DraggedLibraryItem | null {
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
-      if (parsed?.type === 'tool' && parsed?.kind in TOOL_LABELS) {
+      if (parsed?.type === 'tool' && parsed?.kind in TOOL_MARKS) {
         return { type: 'tool', kind: parsed.kind };
       }
-      if (parsed?.type === 'snippet' && parsed?.kind in SNIPPET_LABELS) {
+      if (parsed?.type === 'snippet' && parsed?.kind in SNIPPET_MARKS) {
         return { type: 'snippet', kind: parsed.kind };
       }
     } catch {
@@ -357,8 +424,8 @@ function parseDraggedLibraryItem(event: DragEvent): DraggedLibraryItem | null {
   }
 
   const fallback = event.dataTransfer?.getData('text/plain');
-  if (fallback && fallback in TOOL_LABELS) return { type: 'tool', kind: fallback as ToolKind };
-  if (fallback && fallback in SNIPPET_LABELS) return { type: 'snippet', kind: fallback as SnippetKind };
+  if (fallback && fallback in TOOL_MARKS) return { type: 'tool', kind: fallback as ToolKind };
+  if (fallback && fallback in SNIPPET_MARKS) return { type: 'snippet', kind: fallback as SnippetKind };
   return null;
 }
 
@@ -456,17 +523,17 @@ async function handleSave() {
   try {
     saveMessage.value = null;
     const payload = await editorStore.save();
-    saveMessage.value = { type: 'success', text: `保存成功：${payload.templateId}` };
+    saveMessage.value = { type: 'success', text: t('editor.saveSuccess', { id: payload.templateId }) };
     setTimeout(() => { saveMessage.value = null; }, 3000);
   } catch (err: any) {
-    saveMessage.value = { type: 'error', text: `保存失败：${err.message ?? '未知错误'}` };
+    saveMessage.value = { type: 'error', text: t('editor.saveFailed', { message: err.message ?? t('editor.unknownError') }) };
   }
 }
 
 function handleSmartImportApply(payload: { recognized: RecognizedPriceTag; templateKind: SmartTemplateKind }): void {
   editorStore.applyRecognizedPriceTagTemplate(payload.recognized, payload.templateKind);
   showSmartImportDialog.value = false;
-  saveMessage.value = { type: 'success', text: '已生成智能价签模板，可继续微调后保存。' };
+  saveMessage.value = { type: 'success', text: t('editor.smartImportSuccess') };
   setTimeout(() => { saveMessage.value = null; }, 2800);
 }
 
@@ -772,29 +839,29 @@ onUnmounted(() => {
       <div class="toolbar-left">
         <span class="app-badge">ESL</span>
         <div>
-          <span class="toolbar-title">电子墨水模板编辑器</span>
-          <span class="toolbar-subtitle">电子价签模板设计工作台</span>
+          <span class="toolbar-title">{{ t('editor.appTitle') }}</span>
+          <span class="toolbar-subtitle">{{ t('editor.subtitle') }}</span>
         </div>
       </div>
       <div class="document-tabs">
-        <span class="document-tab active">{{ config.templateName || '未命名模板' }}</span>
+        <span class="document-tab active">{{ config.templateName || t('editor.unnamedTemplate') }}</span>
         <span class="screen-info">{{ screenInfo }}</span>
       </div>
-      <div class="template-actions" aria-label="模板快捷切换">
-        <button class="toolbar-btn smart-import" title="上传价签图片并自动识别排版" @click="showSmartImportDialog = true">智能导入</button>
-        <button class="toolbar-btn compact" title="套用零售价签固定模板" @click="editorStore.applyStarterTemplate('retail')">零售价签</button>
-        <button class="toolbar-btn compact" title="套用条码追踪固定模板" @click="editorStore.applyStarterTemplate('barcode')">条码模板</button>
+      <div class="template-actions" aria-label="Template shortcuts">
+        <button class="toolbar-btn smart-import" :title="t('editor.smartImportTitle')" @click="showSmartImportDialog = true">{{ t('editor.smartImport') }}</button>
+        <button class="toolbar-btn compact" @click="editorStore.applyStarterTemplate('retail')">{{ t('editor.retailTemplate') }}</button>
+        <button class="toolbar-btn compact" @click="editorStore.applyStarterTemplate('barcode')">{{ t('editor.barcodeTemplate') }}</button>
         <select
           class="canvas-size-select"
           :value="canvasSizeValue"
-          title="切换画布尺寸，现有元素会等比缩放"
+          :title="t('editor.canvasResizeTitle')"
           @change="handleCanvasSizeChange"
         >
           <option
             v-if="!isCurrentCanvasSizePreset"
             :value="canvasSizeValue"
           >
-            当前 {{ config.canvas.width }}×{{ config.canvas.height }}
+            {{ t('editor.currentCanvasSize', { width: config.canvas.width, height: config.canvas.height }) }}
           </option>
           <option
             v-for="preset in CANVAS_SIZE_PRESETS"
@@ -803,41 +870,67 @@ onUnmounted(() => {
           >
             {{ preset.label }}
           </option>
-          <option value="custom">自定义尺寸...</option>
+          <option value="custom">{{ t('editor.customCanvasSize') }}</option>
         </select>
         <select
           v-model="templateSelectValue"
           class="template-select"
-          title="打开我的模板记录"
+          :title="t('editor.localTemplates')"
           @change="applyLocalTemplateById"
         >
-          <option value="">我的模板记录</option>
+          <option value="">{{ t('editor.localTemplates') }}</option>
           <option v-for="item in savedTemplates" :key="item.id" :value="item.id">
             {{ item.name }} · {{ formatTemplateTime(item.createdAt) }}
           </option>
         </select>
-        <button class="toolbar-btn compact" title="保存当前画布到本机模板记录" @click="saveLocalTemplate">存为模板</button>
+        <button class="toolbar-btn compact" @click="saveLocalTemplate">{{ t('editor.saveAsTemplate') }}</button>
       </div>
       <div class="toolbar-right">
-        <div class="zoom-controls" aria-label="画布缩放控制">
-          <button class="toolbar-btn compact" title="将画布缩放到当前窗口可完整查看" @click="fitZoom">适应画布</button>
-          <button class="toolbar-btn icon" title="缩小" @click="zoomOut">−</button>
+        <div class="regional-controls" aria-label="Language and market">
+          <select v-model="selectedLocale" class="regional-select" :title="t('common.language')">
+            <option v-for="locale in LOCALES" :key="locale" :value="locale">
+              {{ t(`locale.${locale}`) }}
+            </option>
+          </select>
+          <select v-model="selectedMarket" class="regional-select" :title="t('market.label')">
+            <option v-for="market in MARKETS" :key="market" :value="market">
+              {{ t(`market.${market.toLowerCase()}`) }}
+            </option>
+          </select>
+        </div>
+        <div class="zoom-controls" aria-label="Canvas zoom controls">
+          <button class="toolbar-btn compact" :title="t('editor.fitCanvas')" @click="fitZoom">{{ t('editor.fitCanvas') }}</button>
+          <button class="toolbar-btn icon" :title="t('editor.zoomOut')" @click="zoomOut">−</button>
           <span class="zoom-label">{{ zoomLabel }}</span>
-          <button class="toolbar-btn icon" title="放大" @click="zoomIn">+</button>
-          <button class="toolbar-btn compact" title="重置为 100%" @click="resetZoom">100%</button>
+          <button class="toolbar-btn icon" :title="t('editor.zoomIn')" @click="zoomIn">+</button>
+          <button class="toolbar-btn compact" :title="t('editor.resetZoom')" @click="resetZoom">100%</button>
           <button
             :class="['toolbar-btn', 'compact', { active: showGrid }]"
-            :title="showGrid ? '隐藏画布网格辅助线' : '显示画布网格辅助线'"
+            :title="showGrid ? t('editor.gridTitleHide') : t('editor.gridTitleShow')"
             @click="showGrid = !showGrid"
           >
-            {{ showGrid ? '隐藏网格' : '显示网格' }}
+            {{ showGrid ? t('editor.hideGrid') : t('editor.showGrid') }}
           </button>
         </div>
         <button class="toolbar-btn primary" :disabled="editorStore.isSaving" @click="handleSave">
-          {{ editorStore.isSaving ? '保存中...' : '保存' }}
+          {{ editorStore.isSaving ? t('common.saving') : t('common.save') }}
         </button>
       </div>
     </header>
+
+    <section v-if="showOnboarding" class="onboarding-card" role="note">
+      <div>
+        <span class="onboarding-kicker">{{ t(`market.${selectedMarket.toLowerCase()}`) }}</span>
+        <strong>{{ t('editor.onboardingTitle') }}</strong>
+        <p>{{ selectedMarket === 'CN' ? t('editor.onboardingCN') : t('editor.onboardingEU') }}</p>
+        <div class="onboarding-market-summary" :aria-label="t('market.sampleLabel')">
+          <span v-for="item in marketSummaryItems" :key="item.label">
+            <b>{{ item.label }}</b>{{ item.value }}
+          </span>
+        </div>
+      </div>
+      <button type="button" @click="dismissOnboarding">{{ t('editor.onboardingClose') }}</button>
+    </section>
 
     <main ref="editorShellRef" class="editor-shell">
       <aside
@@ -849,14 +942,14 @@ onUnmounted(() => {
         @mouseenter="openToolboxPeek"
         @mouseleave="closeToolboxPeek"
       >
-        <div v-if="isToolboxCollapsed" class="toolbox-collapsed-strip" aria-label="折叠工具栏">
-          <button class="collapse-toggle" type="button" title="展开工具栏" @click="setToolboxCollapsed(false)">›</button>
+        <div v-if="isToolboxCollapsed" class="toolbox-collapsed-strip" aria-label="Collapsed tools">
+          <button class="collapse-toggle" type="button" :title="t('editor.expandToolbox')" @click="setToolboxCollapsed(false)">›</button>
           <button
             v-for="tool in collapsedToolShortcuts"
             :key="tool.kind"
             class="collapsed-tool-btn"
             type="button"
-            :title="`添加${tool.label}`"
+            :title="t('toolbar.addTitle', { title: tool.label })"
             @click="handleAddTool(tool.kind)"
           >
             <span>{{ tool.mark }}</span>
@@ -866,20 +959,21 @@ onUnmounted(() => {
         <div :class="['toolbox-expanded', { floating: isToolboxCollapsed }]">
           <div class="toolbox-header">
             <div>
-              <span class="panel-caption">工具抽屉</span>
-              <small>{{ isToolboxCollapsed ? '临时浮出' : `${toolboxWidth}px` }}</small>
+              <span class="panel-caption">{{ t('editor.toolbox') }}</span>
+              <small>{{ isToolboxCollapsed ? t('editor.temporaryPeek') : `${toolboxWidth}px` }}</small>
             </div>
             <button
               class="toolbox-header-btn"
               type="button"
-              :title="isToolboxCollapsed ? '固定展开工具栏' : '折叠工具栏'"
+              :title="isToolboxCollapsed ? t('editor.pin') : t('editor.collapse')"
               @click="setToolboxCollapsed(!isToolboxCollapsed)"
             >
-              {{ isToolboxCollapsed ? '固定' : '收起' }}
+              {{ isToolboxCollapsed ? t('editor.pin') : t('editor.collapse') }}
             </button>
           </div>
           <EditorToolbar
             :recent-tools="recentTools"
+            :currency-symbol="activeMarketProfile.price.currencySymbol"
             @add-tool="handleAddTool"
             @add-snippet="handleAddSnippet"
             @tool-drag-start="handleToolDragStart"
@@ -892,7 +986,7 @@ onUnmounted(() => {
           v-if="!isToolboxCollapsed"
           class="toolbox-resize-handle"
           type="button"
-          title="拖动调整工具栏宽度"
+          :title="t('editor.resizeToolbox')"
           @mousedown="startToolboxResize"
         ></button>
       </aside>
@@ -904,7 +998,7 @@ onUnmounted(() => {
             <span class="stage-meta">{{ config.canvas.width }} × {{ config.canvas.height }} px</span>
           </div>
 
-          <div v-if="editorStore.selectedObject" class="quick-fields" aria-label="选中元素快捷属性">
+          <div v-if="editorStore.selectedObject" class="quick-fields" :aria-label="t('editor.selectedQuickProps')">
             <label v-for="field in quickFields" :key="field.key" class="quick-field">
               <span>{{ field.label }}</span>
               <input
@@ -915,35 +1009,36 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="option-actions" aria-label="选中元素快捷操作">
-            <button class="option-btn" :disabled="!editorStore.canUndo" title="撤销" @click="editorStore.undo()">撤销</button>
-            <button class="option-btn" :disabled="!editorStore.canRedo" title="重做" @click="editorStore.redo()">重做</button>
+          <div class="option-actions" :aria-label="t('editor.selectedElementActions')">
+            <button class="option-btn" :disabled="!editorStore.canUndo" :title="t('editor.undo')" @click="editorStore.undo()">{{ t('editor.undo') }}</button>
+            <button class="option-btn" :disabled="!editorStore.canRedo" :title="t('editor.redo')" @click="editorStore.redo()">{{ t('editor.redo') }}</button>
             <span class="option-divider"></span>
-            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="左对齐" @click="editorStore.alignSelectedHorizontal('left')">左</button>
-            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="水平居中" @click="editorStore.alignSelectedHorizontal('center')">中</button>
-            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="右对齐" @click="editorStore.alignSelectedHorizontal('right')">右</button>
-            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="顶部对齐" @click="editorStore.alignSelectedVertical('top')">顶</button>
-            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="垂直居中" @click="editorStore.alignSelectedVertical('middle')">垂中</button>
-            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="底部对齐" @click="editorStore.alignSelectedVertical('bottom')">底</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" :title="t('editor.alignLeft')" @click="editorStore.alignSelectedHorizontal('left')">{{ t('editor.alignLeft') }}</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" :title="t('editor.alignCenter')" @click="editorStore.alignSelectedHorizontal('center')">{{ t('editor.alignCenter') }}</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" :title="t('editor.alignRight')" @click="editorStore.alignSelectedHorizontal('right')">{{ t('editor.alignRight') }}</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" :title="t('editor.alignTop')" @click="editorStore.alignSelectedVertical('top')">{{ t('editor.alignTop') }}</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" :title="t('editor.alignMiddle')" @click="editorStore.alignSelectedVertical('middle')">{{ t('editor.alignMiddle') }}</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" :title="t('editor.alignBottom')" @click="editorStore.alignSelectedVertical('bottom')">{{ t('editor.alignBottom') }}</button>
             <span class="option-divider"></span>
-            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="置于顶层" @click="editorStore.bringSelectedToFront()">置顶</button>
-            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="置于底层" @click="editorStore.sendSelectedToBack()">置底</button>
-            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" title="复制一份" @click="editorStore.duplicateSelected()">副本</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" :title="t('editor.bringFront')" @click="editorStore.bringSelectedToFront()">{{ t('editor.bringFront') }}</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" :title="t('editor.sendBack')" @click="editorStore.sendSelectedToBack()">{{ t('editor.sendBack') }}</button>
+            <button class="option-btn" :disabled="!editorStore.hasActiveSelection" :title="t('editor.duplicate')" @click="editorStore.duplicateSelected()">{{ t('editor.duplicate') }}</button>
             <button
               :class="['option-btn', { active: editorStore.isActiveSelectionLocked }]"
               :disabled="!editorStore.hasActiveSelection"
-              :title="editorStore.isActiveSelectionLocked ? '解锁' : '锁定'"
+              :title="editorStore.isActiveSelectionLocked ? t('editor.unlock') : t('editor.lock')"
               @click="editorStore.toggleLockSelected()"
             >
-              {{ editorStore.isActiveSelectionLocked ? '解锁' : '锁定' }}
+              {{ editorStore.isActiveSelectionLocked ? t('editor.unlock') : t('editor.lock') }}
             </button>
-            <button class="option-btn danger" :disabled="!editorStore.hasActiveSelection" title="删除" @click="editorStore.deleteSelected()">删除</button>
+            <button class="option-btn danger" :disabled="!editorStore.hasActiveSelection" :title="t('editor.delete')" @click="editorStore.deleteSelected()">{{ t('editor.delete') }}</button>
           </div>
         </div>
 
         <div
           ref="workspaceRef"
           :class="['stage-viewport', { 'is-tool-drop-target': isToolDropTarget }]"
+          :data-drop-label="t('editor.dropToAdd')"
           @dragover="handleStageDragOver"
           @dragleave="handleStageDragLeave"
           @drop="handleStageDrop"
@@ -971,14 +1066,14 @@ onUnmounted(() => {
       <aside class="inspector-dock">
         <section class="dock-panel preview-dock">
           <div class="dock-title-row preview-title-row">
-            <span class="preview-dock-title">电子墨水屏预览</span>
-            <div class="preview-controls" aria-label="预览缩放控制">
-              <button title="缩小预览" @click="previewZoomOut">−</button>
+            <span class="preview-dock-title">{{ t('editor.preview') }}</span>
+            <div class="preview-controls" :aria-label="t('editor.previewZoom')">
+              <button :title="t('editor.zoomOut')" @click="previewZoomOut">−</button>
               <span>{{ previewZoomLabel }}</span>
-              <button title="放大预览" @click="previewZoomIn">+</button>
-              <button title="预览 100%" @click="resetPreviewZoom">100%</button>
-              <button title="适应预览区域" @click="fitPreviewZoom">适应</button>
-              <button title="全屏放大预览" @click="openPreviewOverlay">全屏</button>
+              <button :title="t('editor.zoomIn')" @click="previewZoomIn">+</button>
+              <button :title="t('editor.resetZoom')" @click="resetPreviewZoom">100%</button>
+              <button :title="t('editor.fitPreview')" @click="fitPreviewZoom">{{ t('editor.fitPreview') }}</button>
+              <button :title="t('editor.fullscreen')" @click="openPreviewOverlay">{{ t('editor.fullscreen') }}</button>
             </div>
           </div>
           <div class="preview-stage">
@@ -995,7 +1090,7 @@ onUnmounted(() => {
         </section>
 
         <section class="dock-panel inspector-main">
-          <div class="inspector-tabs" role="tablist" aria-label="右侧检查器">
+          <div class="inspector-tabs" role="tablist" :aria-label="t('editor.inspector')">
             <button
               :class="['inspector-tab', { active: inspectorTab === 'properties' }]"
               type="button"
@@ -1003,7 +1098,7 @@ onUnmounted(() => {
               :aria-selected="inspectorTab === 'properties'"
               @click="inspectorTab = 'properties'"
             >
-              属性
+              {{ t('editor.properties') }}
             </button>
             <button
               :class="['inspector-tab', { active: inspectorTab === 'layers' }]"
@@ -1012,7 +1107,7 @@ onUnmounted(() => {
               :aria-selected="inspectorTab === 'layers'"
               @click="inspectorTab = 'layers'"
             >
-              图层
+              {{ t('editor.layers') }}
               <span>{{ editorStore.layerEntries.length }}</span>
             </button>
             <button
@@ -1022,7 +1117,7 @@ onUnmounted(() => {
               :aria-selected="inspectorTab === 'palette'"
               @click="inspectorTab = 'palette'"
             >
-              色板
+              {{ t('editor.palette') }}
               <span>{{ palette.length }}</span>
             </button>
           </div>
@@ -1035,6 +1130,7 @@ onUnmounted(() => {
               :palette="palette"
               :custom-fields="customFields"
               :preview-data="config.previewData"
+              :market-profile="activeMarketProfile"
               @update-prop="editorStore.updateObjectProp"
               @update-props-batch="editorStore.updateObjectPropsBatch"
               @update-preview-field="editorStore.updatePreviewDataField"
@@ -1042,15 +1138,15 @@ onUnmounted(() => {
 
             <div v-else-if="inspectorTab === 'layers'" class="tab-pane">
               <div class="tab-pane-header">
-                <span>图层顺序</span>
-                <span>{{ editorStore.layerEntries.length }} 个对象</span>
+                <span>{{ t('editor.layerOrder') }}</span>
+                <span>{{ t('editor.objectCount', { count: editorStore.layerEntries.length }) }}</span>
               </div>
               <div class="layer-list">
                 <button
                   v-for="layer in editorStore.layerEntries"
                   :key="layer.id"
                   :class="['layer-row', { active: layer.selected, dragging: draggedLayerId === layer.id }]"
-                  :title="`单击选中 ${layer.label}，双击打开属性`"
+                  :title="t('editor.selectLayerTitle', { label: layer.label })"
                   draggable="true"
                   @dragstart="handleLayerDragStart(layer.id, $event)"
                   @dragover.prevent
@@ -1059,32 +1155,32 @@ onUnmounted(() => {
                   @click="handleLayerRowClick(layer.id)"
                   @dblclick.stop.prevent="openLayerProperties(layer.id)"
                 >
-                  <span class="layer-icon">{{ layer.locked ? '锁' : layer.type.slice(0, 1) }}</span>
+                  <span class="layer-icon">{{ layer.locked ? t('editor.lock') : layer.type.slice(0, 1) }}</span>
                   <span class="layer-name">{{ layer.label }}</span>
                   <span class="layer-index">#{{ layer.index + 1 }}</span>
                 </button>
                 <div v-if="savedTemplates.length" class="template-records">
-                  <div class="template-record-title">我的模板</div>
+                  <div class="template-record-title">{{ t('editor.myTemplates') }}</div>
                   <button
                     v-for="item in savedTemplates.slice(0, 3)"
                     :key="item.id"
                     class="template-record"
-                    :title="`载入 ${item.name}`"
+                    :title="t('editor.loadTemplateTitle', { name: item.name })"
                     @click="editorStore.loadTemplate(item.data)"
                   >
                     <span>{{ item.name }}</span>
                     <small>{{ formatTemplateTime(item.createdAt) }}</small>
-                    <b title="删除记录" @click.stop="deleteLocalTemplate(item.id)">×</b>
+                    <b :title="t('editor.delete')" @click.stop="deleteLocalTemplate(item.id)">×</b>
                   </button>
                 </div>
-                <div v-if="!editorStore.layerEntries.length" class="layer-empty">暂无元素</div>
+                <div v-if="!editorStore.layerEntries.length" class="layer-empty">{{ t('editor.noElements') }}</div>
               </div>
             </div>
 
             <div v-else class="tab-pane">
               <div class="tab-pane-header">
-                <span>当前屏幕色板</span>
-                <span>{{ palette.length }} 色</span>
+                <span>{{ t('editor.palette') }}</span>
+                <span>{{ t('editor.colorCount', { count: palette.length }) }}</span>
               </div>
               <div class="palette-cards">
                 <div v-for="color in palette" :key="color.hex" class="palette-card">
@@ -1100,11 +1196,11 @@ onUnmounted(() => {
     </main>
 
     <footer class="editor-statusbar">
-      <span>{{ config.screen.profile.displayName }}</span>
+      <span>{{ screenDisplayName }}</span>
       <span>{{ config.canvas.width }} × {{ config.canvas.height }} px</span>
       <span>{{ config.screen.profile.dpi }} DPI</span>
-      <span>Delete 删除选中元素</span>
-      <span>Cmd/Ctrl + D 复制一份</span>
+      <span>{{ t('editor.deleteShortcut') }}</span>
+      <span>{{ t('editor.duplicateShortcut') }}</span>
       <span v-if="saveMessage" :class="['save-message', saveMessage.type]">
         {{ saveMessage.text }}
       </span>
@@ -1124,13 +1220,13 @@ onUnmounted(() => {
         class="preview-overlay"
         role="dialog"
         aria-modal="true"
-        aria-label="电子墨水屏全屏预览"
+        :aria-label="t('editor.fullscreenPreview')"
         @click.self="isPreviewOverlayOpen = false"
       >
         <div class="preview-overlay-panel">
           <div class="preview-overlay-toolbar">
             <div>
-              <span class="preview-overlay-title">电子墨水屏全屏预览</span>
+              <span class="preview-overlay-title">{{ t('editor.fullscreenPreview') }}</span>
               <small>{{ config.canvas.width }} × {{ config.canvas.height }} px</small>
             </div>
             <div class="preview-overlay-controls">
@@ -1139,8 +1235,8 @@ onUnmounted(() => {
               <button @click="fullscreenPreviewZoomIn">+</button>
               <button @click="resetFullscreenPreviewZoom">100%</button>
               <button @click="setFullscreenPreviewZoom(2)">200%</button>
-              <button @click="fitFullscreenPreviewZoom">适应窗口</button>
-              <button class="danger" @click="isPreviewOverlayOpen = false">关闭</button>
+              <button @click="fitFullscreenPreviewZoom">{{ t('editor.fitPreview') }}</button>
+              <button class="danger" @click="isPreviewOverlayOpen = false">{{ t('common.close') }}</button>
             </div>
           </div>
           <div class="preview-overlay-stage">
@@ -1177,6 +1273,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   height: 66px;
   padding: 0 18px 0 14px;
   background:
@@ -1186,13 +1283,21 @@ onUnmounted(() => {
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 34px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(18px);
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .toolbar-left {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 220px;
+  flex: 0 1 220px;
+  min-width: 160px;
+}
+
+.toolbar-left > div {
+  min-width: 0;
 }
 
 .app-badge {
@@ -1212,6 +1317,9 @@ onUnmounted(() => {
 
 .toolbar-title {
   display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
   font-weight: 750;
   letter-spacing: 0.01em;
@@ -1221,6 +1329,9 @@ onUnmounted(() => {
 .toolbar-subtitle {
   display: block;
   margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   color: var(--text-muted);
 }
@@ -1236,7 +1347,7 @@ onUnmounted(() => {
 
 .document-tab {
   min-width: 0;
-  max-width: 280px;
+  max-width: clamp(120px, 18vw, 280px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1254,7 +1365,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 .template-actions {
@@ -1263,6 +1376,10 @@ onUnmounted(() => {
   gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
+  max-width: min(36vw, 520px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
   padding: 4px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.045);
@@ -1285,9 +1402,48 @@ onUnmounted(() => {
   max-width: 118px;
 }
 
+.regional-controls {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 5px;
+  max-width: min(34vw, 272px);
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid rgba(216, 183, 96, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.regional-select {
+  height: 28px;
+  min-width: 72px;
+  max-width: 126px;
+  padding: 0 24px 0 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-strong);
+  background: rgba(8, 9, 11, 0.64);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.regional-select:focus {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring);
+}
+
 .zoom-controls {
   display: flex;
   align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(40vw, 430px);
+  overflow-x: auto;
+  overflow-y: hidden;
   gap: 5px;
   padding: 4px;
   border-radius: 12px;
@@ -1296,6 +1452,9 @@ onUnmounted(() => {
 }
 
 .screen-info {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
   color: var(--text-muted);
   padding: 7px 10px;
@@ -1306,6 +1465,7 @@ onUnmounted(() => {
 }
 
 .toolbar-btn {
+  white-space: nowrap;
   padding: 7px 14px;
   font-size: 12px;
   font-weight: 650;
@@ -1368,6 +1528,87 @@ onUnmounted(() => {
 
 .toolbar-btn.primary:hover {
   opacity: 0.95;
+}
+
+.onboarding-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(216, 183, 96, 0.2);
+  background:
+    linear-gradient(90deg, rgba(216, 183, 96, 0.14), rgba(141, 188, 246, 0.07)),
+    rgba(17, 19, 23, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.onboarding-card > div {
+  min-width: 0;
+}
+
+.onboarding-card strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.onboarding-card p {
+  margin-top: 2px;
+  max-width: 880px;
+  color: var(--text-main);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.onboarding-market-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.onboarding-market-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 7px;
+  color: var(--text-strong);
+  background: rgba(7, 8, 10, 0.32);
+  border: 1px solid var(--line-faint);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.onboarding-market-summary b {
+  color: var(--text-muted);
+  font-weight: 850;
+}
+
+.onboarding-kicker {
+  display: inline-block;
+  margin-bottom: 3px;
+  color: var(--accent-strong);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.onboarding-card button {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent-strong), var(--accent));
+  border: 1px solid rgba(241, 217, 137, 0.74);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
 }
 
 .editor-shell {
@@ -1703,7 +1944,7 @@ onUnmounted(() => {
 }
 
 .stage-viewport.is-tool-drop-target::before {
-  content: '释放以添加元素';
+  content: attr(data-drop-label);
   position: absolute;
   top: 18px;
   left: 50%;
@@ -2248,11 +2489,19 @@ onUnmounted(() => {
 
 @media (max-width: 1100px) {
   .toolbar-left {
-    min-width: 190px;
+    min-width: 150px;
   }
 
   .document-tabs {
     margin: 0 10px;
+  }
+
+  .template-actions {
+    max-width: 28vw;
+  }
+
+  .screen-info {
+    display: none;
   }
 
   .stage-hint {
@@ -2272,6 +2521,18 @@ onUnmounted(() => {
 
   .editor-topbar {
     padding-right: 10px;
+  }
+
+  .template-actions {
+    max-width: 34vw;
+  }
+
+  .regional-controls {
+    max-width: 42vw;
+  }
+
+  .zoom-controls {
+    max-width: 44vw;
   }
 
   .inspector-dock {

@@ -4,6 +4,7 @@
  */
 import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData } from '@/boot/types';
 import { SYSTEM_FIELDS } from '@/fields/constants';
+import { translate, type PriceFormatProfile } from '@/i18n';
 
 // ══════════ Save Payload Types ══════════
 
@@ -24,6 +25,14 @@ export interface Widget {
   [key: string]: unknown;
 }
 
+export interface PriceWidget extends Widget {
+  currencySymbol: string;
+  showCurrency: boolean;
+  decimalPlaces: number;
+  thousandSeparator: string;
+  decimalSeparator: string;
+}
+
 export interface DynamicMetadata {
   fontFamily: string;
   reservedFields: string[];
@@ -38,6 +47,8 @@ export interface StaticDynamic {
 export interface SavePayload {
   templateId: string;
   templateName: string;
+  locale: string;
+  market: string;
   profile: {
     profileId?: string;
     name: string;
@@ -91,7 +102,9 @@ function widgetGeometry(obj: FabricObjectJSON): Pick<Widget, 'x' | 'y' | 'width'
 
 function extractWidget(
   obj: FabricObjectJSON,
-  previewData?: PreviewData
+  previewData?: PreviewData,
+  priceFormat?: PriceFormatProfile,
+  discountFormatTemplate?: string
 ): Widget | null {
   const ext = (obj as any).extension as Record<string, any> | undefined;
   const extType = (obj as any).extensionType as string | undefined;
@@ -118,8 +131,13 @@ function extractWidget(
         type: 'PRICE',
         fieldId,
         ...widgetGeometry(obj),
+        currencySymbol: ext?.currencySymbol ?? priceFormat?.currencySymbol ?? '',
+        showCurrency: ext?.showCurrency ?? priceFormat?.showCurrency ?? true,
+        decimalPlaces: ext?.decimalPlaces ?? priceFormat?.decimalPlaces ?? 2,
+        thousandSeparator: ext?.thousandSeparator ?? priceFormat?.thousandSeparator ?? ',',
+        decimalSeparator: ext?.decimalSeparator ?? priceFormat?.decimalSeparator ?? '.',
         defaultValue: previewData?.[fieldId] != null ? String(previewData[fieldId]) : '',
-      };
+      } satisfies PriceWidget;
     }
     case 'DISCOUNT': {
       return {
@@ -127,7 +145,7 @@ function extractWidget(
         type: 'DISCOUNT',
         fieldId: 'discount',
         ...widgetGeometry(obj),
-        format: ext?.formatTemplate ?? '{value}折',
+        format: ext?.formatTemplate ?? discountFormatTemplate ?? '{value}',
         defaultValue: previewData?.discount != null ? String(previewData.discount) : '',
       };
     }
@@ -227,11 +245,13 @@ export function buildSavePayload(
   resetWidgetCounter();
 
   const previewData = config.previewData;
+  const priceFormat = config.marketProfile.price;
+  const discountFormatTemplate = config.marketProfile.discountFormatTemplate;
 
   // Extract dynamic widgets from Fabric JSON
   const widgets: Widget[] = [];
   for (const obj of fabricJson.objects ?? []) {
-    const widget = extractWidget(obj, previewData);
+    const widget = extractWidget(obj, previewData, priceFormat, discountFormatTemplate);
     if (widget) {
       widgets.push(widget);
     }
@@ -239,7 +259,9 @@ export function buildSavePayload(
 
   return {
     templateId: config.template?.id ?? generateTemplateId(),
-    templateName: config.templateName ?? '电子价签模板',
+    templateName: config.templateName ?? translate('starter.defaultTemplateName'),
+    locale: config.locale,
+    market: config.market,
     profile: buildProfilePayload(config),
     fullJson: fabricJson,
     staticDynamic: {

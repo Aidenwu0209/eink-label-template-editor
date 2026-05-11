@@ -1,6 +1,7 @@
 /**
  * System reserved field definitions and custom field validation
  */
+import { translate } from '@/i18n';
 
 /** Reserved system field names — these cannot be used as custom field IDs */
 export const SYSTEM_FIELDS = [
@@ -68,14 +69,14 @@ export function validateCustomFieldId(
   const errors: FieldValidationError[] = [];
 
   if (!id || id.trim() === '') {
-    errors.push({ field: id, message: '自定义字段 ID 不能为空' });
+    errors.push({ field: id, message: translate('errors.customFieldEmpty') });
     return errors;
   }
 
   if (SYSTEM_FIELDS.includes(id as SystemField)) {
     errors.push({
       field: id,
-      message: `"${id}" 是系统保留字段，不能用作自定义字段`,
+      message: translate('errors.customFieldReserved', { id }),
     });
     return errors;
   }
@@ -84,12 +85,12 @@ export function validateCustomFieldId(
     if (!/^[A-Za-z]/.test(id)) {
       errors.push({
         field: id,
-        message: '自定义字段 ID 必须以英文字母开头',
+        message: translate('errors.customFieldStart'),
       });
     } else {
       errors.push({
         field: id,
-        message: '自定义字段 ID 只能包含英文字母、数字和下划线',
+        message: translate('errors.customFieldPattern'),
       });
     }
   }
@@ -97,7 +98,7 @@ export function validateCustomFieldId(
   if (existingIds && existingIds.includes(id)) {
     errors.push({
       field: id,
-      message: `自定义字段 ID "${id}" 已存在，不能重复`,
+      message: translate('errors.customFieldDuplicate', { id }),
     });
   }
 

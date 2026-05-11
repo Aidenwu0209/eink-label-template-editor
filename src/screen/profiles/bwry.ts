@@ -3,7 +3,7 @@ import type { ScreenProfile } from '../types';
 
 export const BWRY_PROFILE: ScreenProfile = {
   type: ScreenType.BWRY,
-  displayName: '四色屏 (黑白红黄)',
+  displayName: 'Four-color display (BWRY)',
   palette: [
     { name: 'Black', hex: '#000000', rgb: [0, 0, 0], deviceIndex: 0 },
     { name: 'White', hex: '#FFFFFF', rgb: [255, 255, 255], deviceIndex: 1 },

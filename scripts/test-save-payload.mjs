@@ -62,6 +62,7 @@ function extractWidget(obj, previewData) {
       };
     }
     case 'PRICE': {
+      const marketPrice = previewData?.__priceFormat ?? {};
       return {
         id: nextWidgetId('price'),
         type: 'PRICE',
@@ -70,6 +71,11 @@ function extractWidget(obj, previewData) {
         y: Math.round(obj.top ?? 0),
         width: Math.round(obj.width ?? 0),
         height: Math.round(obj.height ?? 0),
+        currencySymbol: ext.currencySymbol ?? marketPrice.currencySymbol ?? '',
+        showCurrency: ext.showCurrency ?? marketPrice.showCurrency ?? true,
+        decimalPlaces: ext.decimalPlaces ?? marketPrice.decimalPlaces ?? 2,
+        thousandSeparator: ext.thousandSeparator ?? marketPrice.thousandSeparator ?? ',',
+        decimalSeparator: ext.decimalSeparator ?? marketPrice.decimalSeparator ?? '.',
         defaultValue: previewData?.price != null ? String(previewData.price) : '',
       };
     }
@@ -150,7 +156,9 @@ function buildSavePayload(config, fabricJson, canvasDataURL) {
 
   return {
     templateId: config.template?.id ?? `tpl_generated`,
-    templateName: config.templateName ?? '电子价签模板',
+    templateName: config.templateName ?? config.marketProfile?.starterText?.defaultTemplateName ?? '电子价签模板',
+    locale: config.locale,
+    market: config.market,
     profile: {
       profileId: `profile_${config.canvas.width}_${config.canvas.height}_${colorMode.toLowerCase()}`,
       name: profile.displayName,
@@ -203,6 +211,18 @@ function makeConfig(overrides = {}) {
       imageUrl: 'https://example.com/img.png',
       qrContent: 'https://example.com/item',
       barcodeContent: 'SKU1001',
+      __priceFormat: {
+        currencySymbol: '¥',
+        showCurrency: true,
+        decimalPlaces: 2,
+        thousandSeparator: ',',
+        decimalSeparator: '.',
+      },
+    },
+    locale: 'zh-CN',
+    market: 'CN',
+    marketProfile: {
+      starterText: { defaultTemplateName: '电子价签模板' },
     },
     api: { baseUrl: '/api' },
     ...overrides,
@@ -246,6 +266,36 @@ describe('US-013: 生成保存 Payload', () => {
       const config = makeConfig({ templateName: '自定义模板名' });
       const payload = buildSavePayload(config, makeFabricJson([]), MOCK_DATA_URL);
       assert.equal(payload.templateName, '自定义模板名');
+    });
+  });
+
+  describe('Regional save metadata', () => {
+    it('保存 payload 包含 locale、market 和 PRICE 格式字段', () => {
+      const objects = [{
+        type: 'rect', left: 20, top: 50, width: 180, height: 60,
+        extensionType: 'PRICE',
+        extension: {
+          fieldBinding: 'price',
+          currencySymbol: '€',
+          showCurrency: true,
+          decimalPlaces: 2,
+          thousandSeparator: '.',
+          decimalSeparator: ',',
+        },
+      }];
+      const payload = buildSavePayload(makeConfig({
+        locale: 'de',
+        market: 'EU',
+        marketProfile: { starterText: { defaultTemplateName: 'ESL price label' } },
+      }), makeFabricJson(objects), MOCK_DATA_URL);
+      const priceWidget = payload.staticDynamic.dynamicMetadata.widgets[0];
+
+      assert.equal(payload.locale, 'de');
+      assert.equal(payload.market, 'EU');
+      assert.equal(payload.templateName, 'ESL price label');
+      assert.equal(priceWidget.currencySymbol, '€');
+      assert.equal(priceWidget.thousandSeparator, '.');
+      assert.equal(priceWidget.decimalSeparator, ',');
     });
   });
 

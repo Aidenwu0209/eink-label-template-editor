@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SnippetKind, StarterTemplateKind, ToolKind } from '@/stores/editorStore';
 
 type AssetTab = 'my' | 'common' | 'templates';
@@ -30,8 +31,10 @@ type TemplateCard = {
 
 const props = withDefaults(defineProps<{
   recentTools?: ToolKind[];
+  currencySymbol?: string;
 }>(), {
   recentTools: () => [],
+  currencySymbol: '¥',
 });
 
 const emit = defineEmits<{
@@ -43,154 +46,176 @@ const emit = defineEmits<{
 }>();
 
 const activeAssetTab = ref<AssetTab>('my');
+const { t } = useI18n();
 
-const toolCards: ToolCard[] = [
+const toolCardDefs: Array<Omit<ToolCard, 'title' | 'description'> & { titleKey: string; descriptionKey: string }> = [
   {
     kind: 'PRICE',
     group: 'data',
-    mark: '¥',
-    title: '价格',
-    description: '金额展示，支持货币符号和小数样式。',
+    mark: '',
+    titleKey: 'toolbar.tools.PRICE.title',
+    descriptionKey: 'toolbar.tools.PRICE.description',
     badge: 'price',
   },
   {
     kind: 'DISCOUNT',
     group: 'data',
     mark: '%',
-    title: '折扣',
-    description: '促销折扣块，默认居中展示。',
+    titleKey: 'toolbar.tools.DISCOUNT.title',
+    descriptionKey: 'toolbar.tools.DISCOUNT.description',
     badge: 'discount',
   },
   {
     kind: 'IMAGE_DYNAMIC',
     group: 'data',
     mark: 'D',
-    title: '图片字段',
-    description: '绑定图片地址，随数据动态替换。',
+    titleKey: 'toolbar.tools.IMAGE_DYNAMIC.title',
+    descriptionKey: 'toolbar.tools.IMAGE_DYNAMIC.description',
     badge: 'imageUrl',
   },
   {
     kind: 'QRCODE',
     group: 'data',
     mark: 'QR',
-    title: '二维码',
-    description: '绑定二维码内容，适合详情页链接。',
+    titleKey: 'toolbar.tools.QRCODE.title',
+    descriptionKey: 'toolbar.tools.QRCODE.description',
     badge: 'qrContent',
   },
   {
     kind: 'BARCODE',
     group: 'data',
     mark: 'BAR',
-    title: '条形码',
-    description: 'CODE128 条码，适合 SKU 或追踪码。',
+    titleKey: 'toolbar.tools.BARCODE.title',
+    descriptionKey: 'toolbar.tools.BARCODE.description',
     badge: 'barcodeContent',
   },
   {
     kind: 'RECT',
     group: 'base',
     mark: '□',
-    title: '矩形框',
-    description: '绘制背景块、边框或分区容器。',
+    titleKey: 'toolbar.tools.RECT.title',
+    descriptionKey: 'toolbar.tools.RECT.description',
   },
   {
     kind: 'LINE',
     group: 'base',
     mark: '/',
-    title: '直线',
-    description: '绘制分割线、引导线或下划线。',
+    titleKey: 'toolbar.tools.LINE.title',
+    descriptionKey: 'toolbar.tools.LINE.description',
   },
   {
     kind: 'TEXT',
     group: 'base',
     mark: 'T',
-    title: '文本',
-    description: '固定文本，也可在属性中绑定字段。',
+    titleKey: 'toolbar.tools.TEXT.title',
+    descriptionKey: 'toolbar.tools.TEXT.description',
   },
   {
     kind: 'IMAGE_STATIC',
     group: 'base',
     mark: 'IMG',
-    title: '上传图片',
-    description: '手动上传或填写图片 URL。',
+    titleKey: 'toolbar.tools.IMAGE_STATIC.title',
+    descriptionKey: 'toolbar.tools.IMAGE_STATIC.description',
   },
 ];
 
-const snippetCards: SnippetCard[] = [
+const snippetCardDefs: Array<Omit<SnippetCard, 'mark' | 'title' | 'description'> & { markKey: string; titleKey: string; descriptionKey: string }> = [
   {
     kind: 'PRODUCT_TITLE',
-    mark: '标题',
-    title: '商品标题',
-    description: '绑定 productName，适合价签主标题。',
+    markKey: 'toolbar.snippets.PRODUCT_TITLE.mark',
+    titleKey: 'toolbar.snippets.PRODUCT_TITLE.title',
+    descriptionKey: 'toolbar.snippets.PRODUCT_TITLE.description',
     badge: 'productName',
   },
   {
     kind: 'SPEC_TEXT',
-    mark: '规',
-    title: '规格说明',
-    description: '绑定 spec 或 description，作为副标题信息。',
+    markKey: 'toolbar.snippets.SPEC_TEXT.mark',
+    titleKey: 'toolbar.snippets.SPEC_TEXT.title',
+    descriptionKey: 'toolbar.snippets.SPEC_TEXT.description',
     badge: 'spec',
   },
   {
     kind: 'PROMO_TEXT',
-    mark: '促',
-    title: '促销文案',
-    description: '绑定 promoText/description，放置活动说明。',
+    markKey: 'toolbar.snippets.PROMO_TEXT.mark',
+    titleKey: 'toolbar.snippets.PROMO_TEXT.title',
+    descriptionKey: 'toolbar.snippets.PROMO_TEXT.description',
     badge: 'promoText',
   },
   {
     kind: 'MEMBER_PRICE',
-    mark: '会',
-    title: '会员价',
-    description: '绑定 memberPrice，生成可编辑价格组件。',
+    markKey: 'toolbar.snippets.MEMBER_PRICE.mark',
+    titleKey: 'toolbar.snippets.MEMBER_PRICE.title',
+    descriptionKey: 'toolbar.snippets.MEMBER_PRICE.description',
     badge: 'memberPrice',
   },
   {
     kind: 'ORIGINAL_PRICE',
-    mark: '原',
-    title: '原价',
-    description: '绑定 originalPrice，适合作为对比价。',
+    markKey: 'toolbar.snippets.ORIGINAL_PRICE.mark',
+    titleKey: 'toolbar.snippets.ORIGINAL_PRICE.title',
+    descriptionKey: 'toolbar.snippets.ORIGINAL_PRICE.description',
     badge: 'originalPrice',
   },
   {
     kind: 'DISCOUNT_BADGE',
-    mark: '折',
-    title: '折扣标签',
-    description: '绑定 discount，按屏幕色板自动选择配色。',
+    markKey: 'toolbar.snippets.DISCOUNT_BADGE.mark',
+    titleKey: 'toolbar.snippets.DISCOUNT_BADGE.title',
+    descriptionKey: 'toolbar.snippets.DISCOUNT_BADGE.description',
     badge: 'discount',
   },
   {
     kind: 'DIVIDER_LINE',
-    mark: '线',
-    title: '价签分隔线',
-    description: '常用横向分隔线，用来组织信息层级。',
+    markKey: 'toolbar.snippets.DIVIDER_LINE.mark',
+    titleKey: 'toolbar.snippets.DIVIDER_LINE.title',
+    descriptionKey: 'toolbar.snippets.DIVIDER_LINE.description',
   },
 ];
 
-const templateCards: TemplateCard[] = [
+const templateCardDefs: Array<Omit<TemplateCard, 'mark' | 'title' | 'description'> & { markKey: string; titleKey: string; descriptionKey: string }> = [
   {
     kind: 'retail',
-    mark: '价',
-    title: '零售价签模板',
-    description: '商品名、价格、折扣和条码的常用零售版式。',
+    markKey: 'toolbar.templates.retail.mark',
+    titleKey: 'toolbar.templates.retail.title',
+    descriptionKey: 'toolbar.templates.retail.description',
   },
   {
     kind: 'barcode',
-    mark: '码',
-    title: '条码追踪模板',
-    description: '商品名、条形码和二维码的追踪版式。',
+    markKey: 'toolbar.templates.barcode.mark',
+    titleKey: 'toolbar.templates.barcode.title',
+    descriptionKey: 'toolbar.templates.barcode.description',
   },
   {
     kind: 'qr',
-    mark: '券',
-    title: '扫码促销模板',
-    description: '二维码、折扣和说明文案的促销版式。',
+    markKey: 'toolbar.templates.qr.mark',
+    titleKey: 'toolbar.templates.qr.title',
+    descriptionKey: 'toolbar.templates.qr.description',
   },
 ];
 
-const toolByKind = computed(() => new Map(toolCards.map((tool) => [tool.kind, tool])));
+const toolCards = computed<ToolCard[]>(() => toolCardDefs.map((tool) => ({
+  ...tool,
+  mark: tool.kind === 'PRICE' ? props.currencySymbol : tool.mark,
+  title: t(tool.titleKey),
+  description: t(tool.descriptionKey),
+})));
 
-const dataToolCards = computed(() => toolCards.filter((tool) => tool.group === 'data'));
-const baseToolCards = computed(() => toolCards.filter((tool) => tool.group === 'base'));
+const snippetCards = computed<SnippetCard[]>(() => snippetCardDefs.map((snippet) => ({
+  ...snippet,
+  mark: t(snippet.markKey),
+  title: t(snippet.titleKey),
+  description: t(snippet.descriptionKey),
+})));
+
+const templateCards = computed<TemplateCard[]>(() => templateCardDefs.map((template) => ({
+  ...template,
+  mark: t(template.markKey),
+  title: t(template.titleKey),
+  description: t(template.descriptionKey),
+})));
+
+const toolByKind = computed(() => new Map(toolCards.value.map((tool) => [tool.kind, tool])));
+
+const dataToolCards = computed(() => toolCards.value.filter((tool) => tool.group === 'data'));
+const baseToolCards = computed(() => toolCards.value.filter((tool) => tool.group === 'base'));
 
 const recentToolCards = computed(() => {
   return props.recentTools
@@ -219,38 +244,38 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
 <template>
   <div class="toolbar-actions">
     <div class="toolbox-intro">
-      <span>添加元素</span>
-      <small>点击添加到默认位置，或拖到画布指定位置。</small>
+      <span>{{ t('toolbar.addElements') }}</span>
+      <small>{{ t('toolbar.addHint') }}</small>
     </div>
 
-    <div class="asset-tabs" aria-label="素材分类">
+    <div class="asset-tabs" :aria-label="t('toolbar.assetTabs')">
       <button
         :class="{ active: activeAssetTab === 'my' }"
         type="button"
         @click="activeAssetTab = 'my'"
       >
-        我的元素
+        {{ t('toolbar.myElements') }}
       </button>
       <button
         :class="{ active: activeAssetTab === 'common' }"
         type="button"
         @click="activeAssetTab = 'common'"
       >
-        常用片段
+        {{ t('toolbar.commonSnippets') }}
       </button>
       <button
         :class="{ active: activeAssetTab === 'templates' }"
         type="button"
         @click="activeAssetTab = 'templates'"
       >
-        固定模板
+        {{ t('toolbar.fixedTemplates') }}
       </button>
     </div>
 
     <section v-if="recentToolCards.length" class="toolbar-section">
       <div class="toolbar-section-title">
-        <span>最近使用</span>
-        <small>拖放可定位</small>
+        <span>{{ t('toolbar.recent') }}</span>
+        <small>{{ t('toolbar.dragToPlace') }}</small>
       </div>
       <div class="recent-grid">
         <button
@@ -259,7 +284,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
           class="recent-tool"
           type="button"
           draggable="true"
-          :title="`添加${tool.title}`"
+          :title="t('toolbar.addTitle', { title: tool.title })"
           @click="addTool(tool.kind)"
           @dragstart="dragTool(tool.kind, $event)"
         >
@@ -272,13 +297,13 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
     <section class="toolbar-section">
       <div class="toolbar-section-title">
         <span>
-          {{ activeAssetTab === 'my' ? '我的元素' : activeAssetTab === 'common' ? '价签常用片段' : '一键套用版式' }}
+          {{ activeAssetTab === 'my' ? t('toolbar.sectionMy') : activeAssetTab === 'common' ? t('toolbar.sectionCommon') : t('toolbar.sectionTemplates') }}
         </span>
-        <small>{{ activeAssetTab === 'templates' ? '点击即替换当前画布' : '支持点击和拖放' }}</small>
+        <small>{{ activeAssetTab === 'templates' ? t('toolbar.clickReplace') : t('toolbar.clickOrDrag') }}</small>
       </div>
 
       <template v-if="activeAssetTab === 'my'">
-        <div class="subsection-label">数据组件</div>
+        <div class="subsection-label">{{ t('toolbar.dataComponents') }}</div>
         <div class="tool-card-list">
           <button
             v-for="tool in dataToolCards"
@@ -286,7 +311,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
             class="tool-card"
             type="button"
             draggable="true"
-            :title="`添加${tool.title}`"
+            :title="t('toolbar.addTitle', { title: tool.title })"
             @click="addTool(tool.kind)"
             @dragstart="dragTool(tool.kind, $event)"
           >
@@ -299,7 +324,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
           </button>
         </div>
 
-        <div class="subsection-label">基础绘制</div>
+        <div class="subsection-label">{{ t('toolbar.basicDrawing') }}</div>
         <div class="tool-card-list compact-list">
           <button
             v-for="tool in baseToolCards"
@@ -307,7 +332,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
             class="tool-card compact-card"
             type="button"
             draggable="true"
-            :title="`添加${tool.title}`"
+            :title="t('toolbar.addTitle', { title: tool.title })"
             @click="addTool(tool.kind)"
             @dragstart="dragTool(tool.kind, $event)"
           >
@@ -327,7 +352,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
           class="tool-card snippet-card"
           type="button"
           draggable="true"
-          :title="`添加${snippet.title}`"
+          :title="t('toolbar.addTitle', { title: snippet.title })"
           @click="addSnippet(snippet.kind)"
           @dragstart="dragSnippet(snippet.kind, $event)"
         >
@@ -355,7 +380,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
             <small>{{ template.description }}</small>
           </span>
         </button>
-        <p class="template-hint">模板会按当前屏幕色板自动避开大面积黑块；套用前会清空当前画布。</p>
+        <p class="template-hint">{{ t('toolbar.templateHint') }}</p>
       </div>
     </section>
   </div>
@@ -409,6 +434,9 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   min-width: 0;
   min-height: 34px;
   padding: 6px 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-muted);
   background: transparent;
   border: 1px solid transparent;
@@ -440,6 +468,17 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   color: var(--text-main);
   font-size: 12px;
   font-weight: 850;
+}
+
+.toolbar-section-title span,
+.toolbar-section-title small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolbar-section-title span {
+  white-space: nowrap;
 }
 
 .recent-grid {
@@ -514,7 +553,7 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   min-width: 0;
   min-height: 72px;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 10px;
@@ -549,6 +588,9 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
 .tool-mark {
   width: 38px;
   height: 38px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
 }
 
@@ -560,15 +602,24 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
 }
 
 .tool-card-title {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-strong);
   font-size: 14px;
   font-weight: 900;
+  line-height: 1.2;
+}
+
+.tool-card-copy small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .tool-badge {
-  position: absolute;
-  top: 8px;
-  right: 9px;
+  justify-self: end;
   max-width: 82px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -579,6 +630,10 @@ function dragSnippet(kind: SnippetKind, event: DragEvent): void {
   border-radius: 999px;
   font-size: 9px;
   font-weight: 900;
+}
+
+.template-card .tool-card-copy small {
+  -webkit-line-clamp: 3;
 }
 
 .template-card {

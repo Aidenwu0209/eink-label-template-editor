@@ -3,7 +3,7 @@ import type { ScreenProfile } from '../types';
 
 export const SIX_PROFILE: ScreenProfile = {
   type: ScreenType.SIX,
-  displayName: '六色屏 (ACeP)',
+  displayName: 'Six-color display (ACeP)',
   palette: [
     { name: 'Black', hex: '#000000', rgb: [0, 0, 0], deviceIndex: 0 },
     { name: 'White', hex: '#FFFFFF', rgb: [255, 255, 255], deviceIndex: 1 },

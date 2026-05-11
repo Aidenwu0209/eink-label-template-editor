@@ -3,6 +3,7 @@ import { extractPriceTagFromOcr } from './fieldExtraction';
 import { preprocessImageForOcr } from './imagePreprocess';
 import { normalizeOcrResponse } from './normalize';
 import type { OcrCodeResults, OcrProviderOptions, OcrProviderRawResult, RecognizedPriceTag } from './types';
+import { translate } from '@/i18n';
 
 const LOCAL_LOW_CONFIDENCE_THRESHOLD = 0.58;
 const MIN_RELIABLE_ITEM_COUNT = 2;
@@ -43,7 +44,7 @@ export async function recognizePriceTag(
       ...apiResult,
       warnings: [
         ...apiResult.warnings,
-        '本地 OCR 置信度偏低，已自动改用 PaddleOCR API 结果。',
+        translate('ocr.localLowConfidenceFallback'),
       ],
     };
   } catch (err) {
@@ -51,7 +52,7 @@ export async function recognizePriceTag(
       ...localResult,
       warnings: [
         ...localResult.warnings,
-        `API 兜底失败：${err instanceof Error ? err.message : String(err)}`,
+        translate('ocr.apiFallbackFailed', { message: err instanceof Error ? err.message : String(err) }),
       ],
     };
   }
@@ -79,7 +80,7 @@ async function runApiRecognition(
   decodedCodes: OcrCodeResults = {}
 ): Promise<RecognizedPriceTag> {
   if (!options.apiEndpoint) {
-    throw new Error('未配置 PaddleOCR API 地址');
+    throw new Error(translate('ocr.apiNotConfigured'));
   }
 
   const form = new FormData();
@@ -93,7 +94,10 @@ async function runApiRecognition(
   });
 
   if (!response.ok) {
-    throw new Error(`PaddleOCR API 请求失败：${response.status} ${response.statusText}`);
+    throw new Error(translate('ocr.apiRequestFailed', {
+      status: response.status,
+      statusText: response.statusText,
+    }));
   }
 
   const rawResult = await response.json();

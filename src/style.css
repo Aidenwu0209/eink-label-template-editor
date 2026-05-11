@@ -9,13 +9,13 @@
   --surface-soft: rgba(255, 255, 255, 0.055);
   --surface-hover: rgba(255, 255, 255, 0.09);
   --surface-pressed: rgba(214, 181, 92, 0.16);
-  --line-faint: rgba(255, 255, 255, 0.065);
-  --line-soft: rgba(255, 255, 255, 0.105);
-  --line-strong: rgba(255, 255, 255, 0.16);
+  --line-faint: rgba(255, 255, 255, 0.09);
+  --line-soft: rgba(255, 255, 255, 0.14);
+  --line-strong: rgba(255, 255, 255, 0.22);
   --text-strong: #f7f0e5;
   --text-main: #e7ded1;
-  --text-muted: #a9a096;
-  --text-faint: #7f786f;
+  --text-muted: #c0b7aa;
+  --text-faint: #a49b90;
   --accent: #d8b760;
   --accent-strong: #f1d989;
   --accent-soft: rgba(216, 183, 96, 0.14);

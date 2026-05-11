@@ -1,12 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   filterValidCustomFieldIds,
   getValidCustomFieldIdsFromPreviewData,
   isValidCustomFieldId,
   validateCustomFieldId,
 } from '@/fields';
+import { setAppLocale } from '@/i18n';
 
 describe('custom field validation', () => {
+  beforeEach(() => {
+    setAppLocale('zh-CN');
+  });
+
   it('rejects empty, malformed, and reserved custom field IDs', () => {
     expect(validateCustomFieldId('')[0]?.message).toContain('不能为空');
     expect(validateCustomFieldId('123abc')[0]?.message).toContain('必须以英文字母开头');

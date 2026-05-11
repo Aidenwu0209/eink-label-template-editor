@@ -1,4 +1,5 @@
 import type { PreprocessedOcrImage } from './types';
+import { translate } from '@/i18n';
 
 interface PreprocessOptions {
   maxSide?: number;
@@ -24,7 +25,7 @@ export async function preprocessImageForOcr(
   canvas.height = height;
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) throw new Error('无法创建图片预处理画布');
+  if (!ctx) throw new Error(translate('ocr.preprocessCanvasFailed'));
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
@@ -63,7 +64,7 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-      else reject(new Error('图片预处理失败'));
+      else reject(new Error(translate('ocr.preprocessFailed')));
     }, type);
   });
 }

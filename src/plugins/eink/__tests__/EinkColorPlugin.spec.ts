@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EinkColorPlugin } from '../EinkColorPlugin';
 import { ScreenType } from '@/screen/types';
 import type { BootConfig } from '@/boot/types';
+import { MARKET_PROFILES } from '@/i18n/market';
 
 const config: BootConfig = {
   mode: 'create',
@@ -26,6 +27,9 @@ const config: BootConfig = {
     palette: [],
   },
   previewData: {},
+  locale: 'zh-CN',
+  market: 'CN',
+  marketProfile: MARKET_PROFILES.CN,
   api: { baseUrl: '/api' },
 };
 

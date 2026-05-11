@@ -1,5 +1,6 @@
 import type { BootConfig } from '@/boot/types';
 import type { OcrLineItem, OcrLineRole, RecognizedPriceTag } from './types';
+import { translate } from '@/i18n';
 
 export type SmartTemplateKind = 'auto' | 'restore' | 'standard' | 'promotion' | 'member' | 'barcode' | 'qr';
 export type PriceTemplateField = 'price' | 'originalPrice' | 'memberPrice';
@@ -187,7 +188,7 @@ function promotionPlan(ctx: PlanContext, tag: RecognizedPriceTag): TemplateEleme
 function memberPlan(ctx: PlanContext, tag: RecognizedPriceTag): TemplateElementPlan[] {
   return compact([
     text(ctx, 10, 9, 176, 20, 'productName', tag.fields.productName, 14, 'bold', '#000000', 'left', sourceIdsForField(tag, 'productName')),
-    text(ctx, 10, 33, 58, 15, null, '会员价', 9, 'bold', ctx.accent),
+    text(ctx, 10, 33, 58, 15, null, translate('starter.memberLabel'), 9, 'bold', ctx.accent),
     price(ctx, 10, 47, 142, 46, 'memberPrice', 'main', sourceIdsForField(tag, 'memberPrice')),
     tag.fields.price != null ? price(ctx, 158, 72, 70, 18, 'price', 'secondary', sourceIdsForField(tag, 'price')) : null,
     text(ctx, 10, 94, 180, 15, 'promoText', tag.fields.promoText ?? tag.fields.spec, 9, 'normal', '#000000', 'left', sourceIdsForField(tag, tag.fields.promoText ? 'promoText' : 'spec')),
@@ -445,7 +446,7 @@ function getTemplateLineItems(tag: RecognizedPriceTag): OcrLineItem[] {
     role: 'customText',
     fieldKey: null,
     includeInTemplate: true,
-    warnings: ['历史 OCR 结果缺少行映射，已按普通文本加入模板。'],
+    warnings: [translate('ocr.historicalLineWarning')],
   }));
 }
 

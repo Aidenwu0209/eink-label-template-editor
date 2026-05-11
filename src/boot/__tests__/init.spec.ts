@@ -4,12 +4,15 @@ import { InitDataParser } from '../InitDataParser';
 import { BootLoader } from '../BootLoader';
 import { BootConfigError } from '../types';
 import type { EditorInitPayload } from '../types';
+import { MARKET_PROFILES, REGIONAL_PREFERENCE_STORAGE_KEY, setAppLocale } from '@/i18n';
 
 describe('US-001: 外部初始化数据契约', () => {
   let resolver: ConfigResolver;
 
   beforeEach(() => {
     resolver = new ConfigResolver();
+    setAppLocale('zh-CN');
+    localStorage.removeItem(REGIONAL_PREFERENCE_STORAGE_KEY);
     delete (globalThis as any).__ESL_EDITOR_INIT__;
     if (typeof window !== 'undefined') {
       delete (window as any).__ESL_EDITOR_INIT__;
@@ -23,6 +26,8 @@ describe('US-001: 外部初始化数据契约', () => {
     it('接受 mode: "create" 初始化并生成有效 BootConfig', () => {
       const payload: EditorInitPayload = {
         mode: 'create',
+        locale: 'zh-CN',
+        market: 'CN',
         profile: { width: 296, height: 128, colorMode: 'BWR' },
         previewData: { productName: '测试商品', price: 9.9 },
       };
@@ -35,6 +40,42 @@ describe('US-001: 外部初始化数据契约', () => {
       expect(config.screen.type).toBe('tri');
       expect(config.previewData?.productName).toBe('测试商品');
       expect(config.previewData?.price).toBe(9.9);
+      expect(config.locale).toBe('zh-CN');
+      expect(config.market).toBe('CN');
+      expect(config.marketProfile).toBe(MARKET_PROFILES.CN);
+    });
+  });
+
+  describe('Regional preferences', () => {
+    it('honors locale and market from payload and merges market sample data', () => {
+      const config = resolver.resolveFromPayload({
+        mode: 'create',
+        locale: 'de',
+        market: 'EU',
+        profile: { width: 296, height: 128, colorMode: 'BWR' },
+        previewData: { productName: 'Bio Milch' },
+      });
+
+      expect(config.locale).toBe('de');
+      expect(config.market).toBe('EU');
+      expect(config.marketProfile.price.currencySymbol).toBe('€');
+      expect(config.previewData?.productName).toBe('Bio Milch');
+      expect(config.previewData?.barcodeContent).toBe(MARKET_PROFILES.EU.samplePreviewData.barcodeContent);
+    });
+
+    it('uses stored regional preferences before payload defaults', () => {
+      localStorage.setItem(REGIONAL_PREFERENCE_STORAGE_KEY, JSON.stringify({ locale: 'fr', market: 'EU' }));
+
+      const config = resolver.resolveFromPayload({
+        mode: 'create',
+        locale: 'zh-CN',
+        market: 'CN',
+        profile: { width: 296, height: 128, colorMode: 'BW' },
+      });
+
+      expect(config.locale).toBe('fr');
+      expect(config.market).toBe('EU');
+      expect(config.marketProfile.price.currencyCode).toBe('EUR');
     });
   });
 

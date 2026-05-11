@@ -2,6 +2,7 @@
  * Boot Loader type definitions
  */
 import type { ScreenProfile, ScreenType } from '@/screen/types';
+import type { LocaleCode, MarketCode, MarketProfile } from '@/i18n/market';
 
 // ══════════ Editor Mode ══════════
 
@@ -56,6 +57,10 @@ export interface EditorInitPayload {
   saveApi?: string;
   /** Optional PaddleOCR API endpoint used by smart image import */
   ocrApi?: string;
+  /** Optional initial UI language */
+  locale?: LocaleCode;
+  /** Optional initial market profile */
+  market?: MarketCode;
 }
 
 // ══════════ URL Params (legacy) ══════════
@@ -93,6 +98,9 @@ export interface BootConfig {
   templateName?: string;
   previewData?: PreviewData;
   staticDynamic?: unknown;
+  locale: LocaleCode;
+  market: MarketCode;
+  marketProfile: MarketProfile;
   api: {
     baseUrl: string;
   };

@@ -1,23 +1,16 @@
 <script setup lang="ts">
 import { onMounted, reactive } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { useScreenStore } from '@/stores/screenStore';
 import { BootLoader } from '@/boot/BootLoader';
-import { BootPhase } from '@/boot/types';
+import { setAppLocale } from '@/i18n';
 
 const router = useRouter();
+const { t } = useI18n();
 const screenStore = useScreenStore();
 const bootLoader = new BootLoader();
 const state = bootLoader.getState();
-
-const phaseLabels: Record<string, string> = {
-  idle: '准备中...',
-  parsing: '解析参数...',
-  loading: '加载数据...',
-  validating: '验证配置...',
-  ready: '就绪!',
-  error: '启动失败',
-};
 
 function reload() {
   globalThis.location.reload();
@@ -26,6 +19,7 @@ function reload() {
 onMounted(async () => {
   try {
     const config = await bootLoader.resolve();
+    setAppLocale(config.locale);
     screenStore.setConfig(config);
     // Short delay for visual feedback
     await new Promise((r) => setTimeout(r, 300));
@@ -39,8 +33,8 @@ onMounted(async () => {
 <template>
   <div class="boot-screen">
     <div class="boot-container">
-      <h1 class="boot-title">E-ink Template Editor</h1>
-      <p class="boot-subtitle">初始化编辑器...</p>
+      <h1 class="boot-title">{{ t('boot.title') }}</h1>
+      <p class="boot-subtitle">{{ t('boot.subtitle') }}</p>
 
       <div class="progress-track">
         <div
@@ -50,12 +44,12 @@ onMounted(async () => {
         ></div>
       </div>
 
-      <p class="boot-phase">{{ phaseLabels[state.phase] || state.phase }}</p>
+      <p class="boot-phase">{{ t(`boot.phases.${state.phase}`) }}</p>
 
       <div v-if="state.error" class="boot-error">
-        <p class="error-title">⚠ 启动错误</p>
+        <p class="error-title">{{ t('boot.phases.error') }}</p>
         <p class="error-message">{{ state.error }}</p>
-        <button class="retry-btn" @click="reload">重试</button>
+        <button class="retry-btn" @click="reload">{{ t('boot.retry') }}</button>
       </div>
     </div>
   </div>

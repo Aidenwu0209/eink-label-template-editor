@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type * as fabric from 'fabric';
 import PaletteColorPicker from '@/components/common/PaletteColorPicker.vue';
 import { filterValidCustomFieldIds, PRICE_BINDABLE_FIELDS, TEXT_BINDABLE_FIELDS, type PriceBindableField } from '@/fields';
@@ -7,6 +8,7 @@ import { TEXT_OVERFLOW_MODES, IMAGE_FIT_MODES, QRCODE_ERROR_CORRECTIONS } from '
 import type { TextExtension, TextOverflowMode, ImageExtension, ImageFitMode, PriceExtension, DiscountExtension, QrcodeExtension, QrcodeErrorCorrection, BarcodeExtension } from '@/stores/editorStore';
 import type { ColorEntry } from '@/screen/types';
 import type { PreviewData } from '@/boot/types';
+import type { MarketProfile } from '@/i18n';
 import {
   DEFAULT_EDITOR_FONT_FAMILY,
   FONT_FAMILY_OPTIONS,
@@ -22,6 +24,7 @@ const props = defineProps<{
   palette: ColorEntry[];
   customFields?: string[];
   previewData?: PreviewData;
+  marketProfile: MarketProfile;
 }>();
 
 const emit = defineEmits<{
@@ -35,65 +38,47 @@ const selectedObject = computed(() => {
   return props.selectedObject;
 });
 
-const OBJECT_TYPE_LABELS = {
-  RECT: '矩形框',
-  LINE: '直线',
-  TEXT: '文本',
-  PRICE: '价格',
-  DISCOUNT: '折扣',
-  IMAGE: '图片',
-  QRCODE: '二维码',
-  BARCODE: '条形码',
-} as const;
+const { t } = useI18n();
 
-const FIELD_LABELS: Record<string, string> = {
-  productName: '商品名称',
-  description: '商品描述',
-  price: '价格',
-  originalPrice: '原价',
-  memberPrice: '会员价',
-  discount: '折扣',
-  spec: '规格',
-  brand: '品牌',
-  origin: '产地',
-  promoText: '促销文案',
-  imageUrl: '图片地址',
-  qrContent: '二维码内容',
-  barcodeContent: '条形码内容',
-};
+function overflowModeLabel(mode: TextOverflowMode): string {
+  return t(`properties.overflow${mode[0].toUpperCase()}${mode.slice(1)}`);
+}
 
-const OVERFLOW_MODE_LABELS: Record<TextOverflowMode, string> = {
-  clip: '裁切超出内容',
-  ellipsis: '超出显示省略号',
-  wrap: '自动换行',
-};
+function imageFitModeLabel(mode: ImageFitMode): string {
+  return t(`properties.imageFit${mode[0].toUpperCase()}${mode.slice(1)}`);
+}
 
-const IMAGE_FIT_MODE_LABELS: Record<ImageFitMode, string> = {
-  contain: '完整显示（等比缩放）',
-  cover: '填满区域（可能裁切）',
-  fill: '拉伸填满',
-};
+function qrcodeErrorCorrectionLabel(level: QrcodeErrorCorrection): string {
+  return t(`properties.qrError${level}`);
+}
 
-const QRCODE_ERROR_CORRECTION_LABELS: Record<QrcodeErrorCorrection, string> = {
-  L: 'L - 容错低，内容容量最大',
-  M: 'M - 默认',
-  Q: 'Q - 容错较高',
-  H: 'H - 容错最高，内容容量最小',
-};
+const CURRENCY_PRESETS = computed(() => {
+  const market = props.marketProfile.price;
+  return [
+    {
+      value: 'market-default',
+      label: `${market.currencyCode} ${market.currencySymbol}12${market.decimalSeparator}90`,
+      patch: { ...market },
+    },
+    { value: 'cny-symbol', label: '¥12.90', patch: { currencySymbol: '¥', currencyCode: 'CNY', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+    { value: 'cny-yuan', label: '12.90元', patch: { currencySymbol: '元', currencyCode: 'CNY', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+    { value: 'cny-code', label: 'CNY 12.90', patch: { currencySymbol: 'CNY ', currencyCode: 'CNY', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+    { value: 'usd', label: '$12.90', patch: { currencySymbol: '$', currencyCode: 'USD', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
+    { value: 'eur', label: '€12,90', patch: { currencySymbol: '€', currencyCode: 'EUR', showCurrency: true, decimalPlaces: 2, thousandSeparator: '.', decimalSeparator: ',' } },
+    { value: 'none', label: t('common.none'), patch: { currencySymbol: '', currencyCode: '', showCurrency: false, decimalPlaces: 2, thousandSeparator: market.thousandSeparator, decimalSeparator: market.decimalSeparator } },
+    { value: 'integer', label: t('properties.noDecimals'), patch: { ...market, decimalPlaces: 0 } },
+  ];
+});
 
-const CURRENCY_PRESETS = [
-  { value: 'cny-symbol', label: '¥12.90', patch: { currencySymbol: '¥', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
-  { value: 'cny-yuan', label: '12.90元', patch: { currencySymbol: '元', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
-  { value: 'cny-code', label: 'CNY 12.90', patch: { currencySymbol: 'CNY ', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
-  { value: 'usd', label: '$12.90', patch: { currencySymbol: '$', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
-  { value: 'eur', label: '€12.90', patch: { currencySymbol: '€', showCurrency: true, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
-  { value: 'none', label: '无货币符号', patch: { currencySymbol: '', showCurrency: false, decimalPlaces: 2, thousandSeparator: ',', decimalSeparator: '.' } },
-  { value: 'integer', label: '无小数', patch: { currencySymbol: '¥', showCurrency: true, decimalPlaces: 0, thousandSeparator: ',', decimalSeparator: '.' } },
-] as const;
+function fieldLabel(field: string): string {
+  const key = `fields.${field}`;
+  const label = t(key);
+  return label === key ? field : label;
+}
 
 function fieldOptionLabel(field: string): string {
-  const label = FIELD_LABELS[field];
-  return label ? `${label}（${field}）` : field;
+  const label = fieldLabel(field);
+  return label ? `${label} (${field})` : field;
 }
 
 const objectType = computed(() => {
@@ -126,9 +111,9 @@ const hasSupportedSelection = computed(() => {
 });
 const objectTypeLabel = computed(() => {
   if (!objectType.value) return '';
-  return OBJECT_TYPE_LABELS[objectType.value as keyof typeof OBJECT_TYPE_LABELS] ?? objectType.value;
+  return t(`objects.${objectType.value}`);
 });
-const panelTitle = computed(() => hasSupportedSelection.value ? `${objectTypeLabel.value}属性` : '属性面板');
+const panelTitle = computed(() => hasSupportedSelection.value ? `${objectTypeLabel.value} ${t('editor.properties')}` : t('editor.properties'));
 
 // RECT properties
 const rectX = computed(() => selectedObject.value?.left ?? 0);
@@ -192,7 +177,7 @@ const imagePreviewValue = computed(() => props.previewData?.imageUrl == null ? '
 const imageUploadError = ref('');
 const imageLoadError = computed(() => {
   if (imageExt.value?.loadStatus !== 'error') return '';
-  return imageExt.value.loadError || '图片加载失败';
+  return imageExt.value.loadError || t('errors.imageLoadShort');
 });
 
 // PRICE properties
@@ -201,12 +186,12 @@ const priceExt = computed<PriceExtension | null>(() => {
   return (selectedObject.value as any).extension as PriceExtension;
 });
 
-const priceCurrencySymbol = computed(() => priceExt.value?.currencySymbol ?? '¥');
+const priceCurrencySymbol = computed(() => priceExt.value?.currencySymbol ?? props.marketProfile.price.currencySymbol);
 const priceFontFamily = computed(() => resolveEditorFontFamily(priceExt.value?.fontFamily));
-const priceShowCurrency = computed(() => priceExt.value?.showCurrency ?? true);
-const priceDecimalPlaces = computed(() => priceExt.value?.decimalPlaces ?? 2);
-const priceThousandSep = computed(() => priceExt.value?.thousandSeparator ?? ',');
-const priceDecimalSep = computed(() => priceExt.value?.decimalSeparator ?? '.');
+const priceShowCurrency = computed(() => priceExt.value?.showCurrency ?? props.marketProfile.price.showCurrency);
+const priceDecimalPlaces = computed(() => priceExt.value?.decimalPlaces ?? props.marketProfile.price.decimalPlaces);
+const priceThousandSep = computed(() => priceExt.value?.thousandSeparator ?? props.marketProfile.price.thousandSeparator);
+const priceDecimalSep = computed(() => priceExt.value?.decimalSeparator ?? props.marketProfile.price.decimalSeparator);
 const priceWidth = computed(() => (selectedObject.value as fabric.Rect)?.width ?? 0);
 const priceHeight = computed(() => (selectedObject.value as fabric.Rect)?.height ?? 0);
 const priceFieldBinding = computed<PriceBindableField>(() => priceExt.value?.fieldBinding ?? 'price');
@@ -222,7 +207,7 @@ const discountExt = computed<DiscountExtension | null>(() => {
   return (selectedObject.value as any).extension as DiscountExtension;
 });
 
-const discountFormatTemplate = computed(() => discountExt.value?.formatTemplate ?? '{value}折');
+const discountFormatTemplate = computed(() => discountExt.value?.formatTemplate ?? props.marketProfile.discountFormatTemplate);
 const discountBgColor = computed(() => discountExt.value?.backgroundColor ?? '#FFFFFF');
 const discountShowBackground = computed(() => {
   const ext = discountExt.value;
@@ -352,7 +337,7 @@ function updateDiscountBackgroundMode(value: string) {
 }
 
 function applyCurrencyPreset(value: string) {
-  const preset = CURRENCY_PRESETS.find((item) => item.value === value);
+  const preset = CURRENCY_PRESETS.value.find((item) => item.value === value);
   if (!preset) return;
   updatePropsBatch([
     { key: 'ext.currencySymbol', value: preset.patch.currencySymbol },
@@ -407,7 +392,7 @@ function handleTextFileChange(event: Event, updater: (value: string) => void, se
   setError('');
   if (!file) return;
   if (!file.name.toLowerCase().endsWith('.txt') && file.type !== 'text/plain') {
-    setError('请选择 .txt 文本文件');
+    setError(t('properties.chooseTxt'));
     input.value = '';
     return;
   }
@@ -418,7 +403,7 @@ function handleTextFileChange(event: Event, updater: (value: string) => void, se
     input.value = '';
   };
   reader.onerror = () => {
-    setError(reader.error?.message || '读取文本文件失败');
+    setError(reader.error?.message || t('properties.readTxtFailed'));
     input.value = '';
   };
   reader.readAsText(file);
@@ -439,7 +424,7 @@ function handleStaticImageFileChange(event: Event) {
 
   if (!file) return;
   if (!file.type.startsWith('image/')) {
-    imageUploadError.value = '请选择图片文件';
+    imageUploadError.value = t('properties.chooseImage');
     input.value = '';
     return;
   }
@@ -450,7 +435,7 @@ function handleStaticImageFileChange(event: Event) {
     input.value = '';
   };
   reader.onerror = () => {
-    imageUploadError.value = reader.error?.message || '读取图片文件失败';
+    imageUploadError.value = reader.error?.message || t('properties.readImageFailed');
     input.value = '';
   };
   reader.readAsDataURL(file);
@@ -466,8 +451,8 @@ function handleStaticImageFileChange(event: Event) {
 
     <div v-if="!hasSupportedSelection" class="empty-state">
       <div class="empty-state-mark">+</div>
-      <div class="empty-state-title">未选择对象</div>
-      <p>从左侧工具箱添加元素，或点击画布上的元素后在这里调整属性。</p>
+      <div class="empty-state-title">{{ t('properties.emptyTitle') }}</div>
+      <p>{{ t('properties.emptyHint') }}</p>
     </div>
 
     <template v-else>
@@ -493,7 +478,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <div class="prop-group">
-        <label class="prop-label">宽度</label>
+        <label class="prop-label">{{ t('properties.width') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -502,7 +487,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <div class="prop-group">
-        <label class="prop-label">高度</label>
+        <label class="prop-label">{{ t('properties.height') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -511,19 +496,19 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <PaletteColorPicker
-        label="填充色"
+        :label="t('properties.fillColor')"
         :colors="palette"
         :model-value="rectFill"
         @update:model-value="updateProp('fill', $event)"
       />
       <PaletteColorPicker
-        label="描边色"
+        :label="t('properties.strokeColor')"
         :colors="palette"
         :model-value="rectStroke || '#000000'"
         @update:model-value="updateProp('stroke', $event)"
       />
       <div class="prop-group">
-        <label class="prop-label">描边宽度</label>
+        <label class="prop-label">{{ t('properties.strokeWidth') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -537,7 +522,7 @@ function handleStaticImageFileChange(event: Event) {
     <!-- LINE properties -->
     <template v-if="isLine">
       <div class="prop-group">
-        <label class="prop-label">起点 X</label>
+        <label class="prop-label">{{ t('properties.startX') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -546,7 +531,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <div class="prop-group">
-        <label class="prop-label">起点 Y</label>
+        <label class="prop-label">{{ t('properties.startY') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -555,7 +540,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <div class="prop-group">
-        <label class="prop-label">终点 X</label>
+        <label class="prop-label">{{ t('properties.endX') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -564,7 +549,7 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <div class="prop-group">
-        <label class="prop-label">终点 Y</label>
+        <label class="prop-label">{{ t('properties.endY') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -573,13 +558,13 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <PaletteColorPicker
-        label="颜色"
+        :label="t('properties.color')"
         :colors="palette"
         :model-value="lineStroke"
         @update:model-value="updateProp('stroke', $event)"
       />
       <div class="prop-group">
-        <label class="prop-label">线宽</label>
+        <label class="prop-label">{{ t('properties.lineWidth') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -593,7 +578,7 @@ function handleStaticImageFileChange(event: Event) {
     <!-- TEXT properties -->
     <template v-if="isText">
       <div class="prop-group prop-wide">
-        <label class="prop-label">文本内容</label>
+        <label class="prop-label">{{ t('properties.textContent') }}</label>
         <input
           type="text"
           class="prop-input"
@@ -603,31 +588,31 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">数据字段</label>
+        <label class="prop-label">{{ t('properties.dataField') }}</label>
         <select
           class="prop-input"
           :value="textFieldBinding"
           @change="updateProp('ext.fieldBinding', ($event.target as HTMLSelectElement).value || null)"
         >
-          <option value="">无（固定文本）</option>
+          <option value="">{{ t('properties.fixedText') }}</option>
           <option v-for="f in bindableFields" :key="f" :value="f">{{ fieldOptionLabel(f) }}</option>
         </select>
-        <div class="prop-hint">选择字段后，文本会使用预览数据中的对应值。</div>
+        <div class="prop-hint">{{ t('properties.fieldHint') }}</div>
       </div>
 
       <div v-if="textFieldBinding" class="prop-group prop-wide">
-        <label class="prop-label">预览数据 · {{ fieldOptionLabel(textFieldBinding) }}</label>
+        <label class="prop-label">{{ t('properties.previewDataField', { field: fieldOptionLabel(textFieldBinding) }) }}</label>
         <input
           type="text"
           class="prop-input"
           :value="textPreviewValue"
           @change="updatePreviewField(textFieldBinding, ($event.target as HTMLInputElement).value)"
         />
-        <div class="prop-hint">这里改的是预览数据，所有绑定同一字段的文本会一起刷新。</div>
+        <div class="prop-hint">{{ t('properties.previewDataHint') }}</div>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">字号</label>
+        <label class="prop-label">{{ t('properties.fontSize') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -639,26 +624,26 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">字重</label>
+        <label class="prop-label">{{ t('properties.fontWeight') }}</label>
         <select
           class="prop-input"
           :value="textFontWeight"
           @change="updateProp('fontWeight', fontWeightFromSelect(($event.target as HTMLSelectElement).value))"
         >
-          <option value="normal">正常</option>
-          <option value="bold">粗体</option>
+          <option value="normal">{{ t('properties.normal') }}</option>
+          <option value="bold">{{ t('properties.bold') }}</option>
         </select>
       </div>
 
       <PaletteColorPicker
-        label="文字颜色"
+        :label="t('properties.textColor')"
         :colors="palette"
         :model-value="textFill"
         @update:model-value="updateProp('fill', $event)"
       />
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">字体</label>
+        <label class="prop-label">{{ t('properties.font') }}</label>
         <select
           class="prop-input"
           :value="resolveEditorFontFamily(textObj?.fontFamily ?? DEFAULT_EDITOR_FONT_FAMILY)"
@@ -671,44 +656,44 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">水平对齐</label>
+        <label class="prop-label">{{ t('properties.horizontalAlign') }}</label>
         <select
           class="prop-input"
           :value="textAlign"
           @change="updateProp('textAlign', ($event.target as HTMLSelectElement).value)"
         >
-          <option value="left">左对齐</option>
-          <option value="center">居中</option>
-          <option value="right">右对齐</option>
+          <option value="left">{{ t('properties.alignLeft') }}</option>
+          <option value="center">{{ t('properties.alignCenter') }}</option>
+          <option value="right">{{ t('properties.alignRight') }}</option>
         </select>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">垂直对齐</label>
+        <label class="prop-label">{{ t('properties.verticalAlign') }}</label>
         <select
           class="prop-input"
           :value="textVerticalAlign"
           @change="updateProp('ext.verticalAlign', ($event.target as HTMLSelectElement).value)"
         >
-          <option value="top">顶部</option>
-          <option value="middle">居中</option>
-          <option value="bottom">底部</option>
+          <option value="top">{{ t('properties.alignTop') }}</option>
+          <option value="middle">{{ t('properties.alignMiddle') }}</option>
+          <option value="bottom">{{ t('properties.alignBottom') }}</option>
         </select>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">超长内容处理</label>
+        <label class="prop-label">{{ t('properties.overflowMode') }}</label>
         <select
           class="prop-input"
           :value="textOverflow"
           @change="updateProp('ext.overflow', ($event.target as HTMLSelectElement).value)"
         >
-          <option v-for="m in TEXT_OVERFLOW_MODES" :key="m" :value="m">{{ OVERFLOW_MODE_LABELS[m] }}</option>
+          <option v-for="m in TEXT_OVERFLOW_MODES" :key="m" :value="m">{{ overflowModeLabel(m) }}</option>
         </select>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">最多显示行数</label>
+        <label class="prop-label">{{ t('properties.lineClamp') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -716,16 +701,16 @@ function handleStaticImageFileChange(event: Event) {
           :value="textLineClamp"
           @change="updateProp('ext.lineClamp', +($event.target as HTMLInputElement).value)"
         />
-        <div class="prop-hint">填 0 表示不限制行数。</div>
+        <div class="prop-hint">{{ t('properties.lineClampHint') }}</div>
       </div>
 
-      <div class="prop-note">字体使用中英数字常见字体栈；导出端若缺少某字体，会按同一字体栈自动回退。</div>
+      <div class="prop-note">{{ t('properties.fontNote') }}</div>
     </template>
 
     <!-- PRICE properties -->
     <template v-if="isPrice">
       <div class="prop-group prop-wide">
-        <label class="prop-label">数据字段</label>
+        <label class="prop-label">{{ t('properties.dataField') }}</label>
         <select
           class="prop-input"
           :value="priceFieldBinding"
@@ -738,7 +723,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">预览{{ FIELD_LABELS[priceFieldBinding] ?? '价格' }}</label>
+        <label class="prop-label">{{ t('properties.previewField', { field: fieldLabel(priceFieldBinding) }) }}</label>
         <input
           type="number"
           step="0.01"
@@ -746,16 +731,16 @@ function handleStaticImageFileChange(event: Event) {
           :value="pricePreviewValue"
           @change="updatePreviewField(priceFieldBinding, ($event.target as HTMLInputElement).value)"
         />
-        <div class="prop-hint">修改测试数据会刷新所有绑定该字段的价格组件。</div>
+        <div class="prop-hint">{{ t('properties.previewPriceHint') }}</div>
       </div>
 
       <div class="quick-preset-row">
-        <button type="button" @click="applyPricePreset('sale')">{{ paletteHex('red', '') ? '红色促销价' : '粗黑强调价' }}</button>
-        <button type="button" @click="applyPricePreset('plain')">黑色常规价</button>
+        <button type="button" @click="applyPricePreset('sale')">{{ paletteHex('red', '') ? t('properties.salePriceRed') : t('properties.salePriceStrong') }}</button>
+        <button type="button" @click="applyPricePreset('plain')">{{ t('properties.plainPrice') }}</button>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">字体</label>
+        <label class="prop-label">{{ t('properties.font') }}</label>
         <select
           class="prop-input"
           :value="priceFontFamily"
@@ -772,9 +757,9 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">货币样式快捷选择</label>
+        <label class="prop-label">{{ t('properties.currencyPreset') }}</label>
         <select class="prop-input" value="" @change="applyCurrencyPreset(($event.target as HTMLSelectElement).value)">
-          <option value="" disabled>选择一种显示格式</option>
+          <option value="" disabled>{{ t('properties.selectCurrencyFormat') }}</option>
           <option v-for="preset in CURRENCY_PRESETS" :key="preset.value" :value="preset.value">
             {{ preset.label }}
           </option>
@@ -782,7 +767,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">货币符号</label>
+        <label class="prop-label">{{ t('properties.currencySymbol') }}</label>
         <input
           type="text"
           class="prop-input"
@@ -792,19 +777,19 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">显示货币符号</label>
+        <label class="prop-label">{{ t('properties.showCurrency') }}</label>
         <select
           class="prop-input"
           :value="priceShowCurrency ? 'true' : 'false'"
           @change="updateProp('ext.showCurrency', ($event.target as HTMLSelectElement).value === 'true')"
         >
-          <option value="true">是</option>
-          <option value="false">否</option>
+          <option value="true">{{ t('properties.yes') }}</option>
+          <option value="false">{{ t('properties.no') }}</option>
         </select>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">小数位数</label>
+        <label class="prop-label">{{ t('properties.decimalPlaces') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -816,7 +801,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">千分位分隔符</label>
+        <label class="prop-label">{{ t('properties.thousandSeparator') }}</label>
         <input
           type="text"
           class="prop-input"
@@ -826,7 +811,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">小数分隔符</label>
+        <label class="prop-label">{{ t('properties.decimalSeparator') }}</label>
         <input
           type="text"
           class="prop-input"
@@ -836,7 +821,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">宽度</label>
+        <label class="prop-label">{{ t('properties.width') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -846,7 +831,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">高度</label>
+        <label class="prop-label">{{ t('properties.height') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -855,9 +840,9 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
 
-      <div class="section-label">货币符号样式</div>
+      <div class="section-label">{{ t('properties.currencyStyle') }}</div>
       <div class="prop-group">
-        <label class="prop-label">字号</label>
+        <label class="prop-label">{{ t('properties.fontSize') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -868,26 +853,26 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <div class="prop-group">
-        <label class="prop-label">字重</label>
+        <label class="prop-label">{{ t('properties.fontWeight') }}</label>
         <select
           class="prop-input"
           :value="fontWeightSelectValue(priceExt?.currencyStyle?.fontWeight)"
           @change="updateProp('ext.currencyStyle', { ...priceExt?.currencyStyle, fontWeight: fontWeightFromSelect(($event.target as HTMLSelectElement).value) })"
         >
-          <option value="normal">正常</option>
-          <option value="bold">粗体</option>
+          <option value="normal">{{ t('properties.normal') }}</option>
+          <option value="bold">{{ t('properties.bold') }}</option>
         </select>
       </div>
       <PaletteColorPicker
-        label="颜色"
+        :label="t('properties.color')"
         :colors="palette"
         :model-value="priceExt?.currencyStyle?.color ?? '#000000'"
         @update:model-value="updateProp('ext.currencyStyle', { ...priceExt?.currencyStyle, color: $event })"
       />
 
-      <div class="section-label">整数样式</div>
+      <div class="section-label">{{ t('properties.integerStyle') }}</div>
       <div class="prop-group">
-        <label class="prop-label">字号</label>
+        <label class="prop-label">{{ t('properties.fontSize') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -898,26 +883,26 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <div class="prop-group">
-        <label class="prop-label">字重</label>
+        <label class="prop-label">{{ t('properties.fontWeight') }}</label>
         <select
           class="prop-input"
           :value="fontWeightSelectValue(priceExt?.integerStyle?.fontWeight)"
           @change="updateProp('ext.integerStyle', { ...priceExt?.integerStyle, fontWeight: fontWeightFromSelect(($event.target as HTMLSelectElement).value) })"
         >
-          <option value="normal">正常</option>
-          <option value="bold">粗体</option>
+          <option value="normal">{{ t('properties.normal') }}</option>
+          <option value="bold">{{ t('properties.bold') }}</option>
         </select>
       </div>
       <PaletteColorPicker
-        label="颜色"
+        :label="t('properties.color')"
         :colors="palette"
         :model-value="priceExt?.integerStyle?.color ?? '#000000'"
         @update:model-value="updateProp('ext.integerStyle', { ...priceExt?.integerStyle, color: $event })"
       />
 
-      <div class="section-label">小数样式</div>
+      <div class="section-label">{{ t('properties.decimalStyle') }}</div>
       <div class="prop-group">
-        <label class="prop-label">字号</label>
+        <label class="prop-label">{{ t('properties.fontSize') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -928,43 +913,43 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
       <div class="prop-group">
-        <label class="prop-label">字重</label>
+        <label class="prop-label">{{ t('properties.fontWeight') }}</label>
         <select
           class="prop-input"
           :value="fontWeightSelectValue(priceExt?.decimalStyle?.fontWeight)"
           @change="updateProp('ext.decimalStyle', { ...priceExt?.decimalStyle, fontWeight: fontWeightFromSelect(($event.target as HTMLSelectElement).value) })"
         >
-          <option value="normal">正常</option>
-          <option value="bold">粗体</option>
+          <option value="normal">{{ t('properties.normal') }}</option>
+          <option value="bold">{{ t('properties.bold') }}</option>
         </select>
       </div>
       <PaletteColorPicker
-        label="颜色"
+        :label="t('properties.color')"
         :colors="palette"
         :model-value="priceExt?.decimalStyle?.color ?? '#000000'"
         @update:model-value="updateProp('ext.decimalStyle', { ...priceExt?.decimalStyle, color: $event })"
       />
       <div class="prop-group">
-        <label class="prop-label">小数字符上移</label>
+        <label class="prop-label">{{ t('properties.decimalOffset') }}</label>
         <input
           type="number"
           class="prop-input"
           :value="priceExt?.decimalStyle?.offsetY ?? -12"
           @change="updateProp('ext.decimalStyle', { ...priceExt?.decimalStyle, offsetY: +($event.target as HTMLInputElement).value })"
         />
-        <div class="prop-hint">负数表示向上移动，例如 -12。</div>
+        <div class="prop-hint">{{ t('properties.decimalOffsetHint') }}</div>
       </div>
     </template>
 
     <!-- DISCOUNT properties -->
     <template v-if="isDiscount">
       <div class="info-row">
-        <span>数据字段</span>
+        <span>{{ t('properties.dataField') }}</span>
         <b>{{ fieldOptionLabel('discount') }}</b>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">预览折扣</label>
+        <label class="prop-label">{{ t('properties.previewDiscount') }}</label>
         <input
           type="number"
           step="0.1"
@@ -975,18 +960,18 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">显示格式</label>
+        <label class="prop-label">{{ t('properties.discountFormat') }}</label>
         <input
           type="text"
           class="prop-input"
           :value="discountFormatTemplate"
           @change="updateProp('ext.formatTemplate', ($event.target as HTMLInputElement).value)"
         />
-        <div class="prop-hint">用 {value} 表示折扣值，例如 {value}折。</div>
+        <div class="prop-hint">{{ t('properties.discountFormatHint', { value: '{value}', example: props.marketProfile.discountFormatTemplate }) }}</div>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">宽度</label>
+        <label class="prop-label">{{ t('properties.width') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -996,7 +981,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">高度</label>
+        <label class="prop-label">{{ t('properties.height') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -1006,34 +991,34 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <PaletteColorPicker
-        label="背景色"
+        :label="t('properties.backgroundColor')"
         :colors="palette"
         :model-value="discountBgColor"
         @update:model-value="updateProp('ext.backgroundColor', $event)"
       />
 
       <div class="prop-group">
-        <label class="prop-label">背景框</label>
+        <label class="prop-label">{{ t('properties.backgroundBox') }}</label>
         <select
           class="prop-input"
           :value="discountShowBackground ? 'true' : 'false'"
           @change="updateDiscountBackgroundMode(($event.target as HTMLSelectElement).value)"
         >
-          <option value="false">不显示</option>
-          <option value="true">显示</option>
+          <option value="false">{{ t('properties.hide') }}</option>
+          <option value="true">{{ t('properties.show') }}</option>
         </select>
-        <div class="prop-hint">普通拖出的折扣默认无框；需要徽章效果时再打开。</div>
+        <div class="prop-hint">{{ t('properties.discountBgHint') }}</div>
       </div>
 
       <PaletteColorPicker
-        label="文字颜色"
+        :label="t('properties.textColor')"
         :colors="palette"
         :model-value="discountTextColor"
         @update:model-value="updateProp('ext.textColor', $event)"
       />
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">字体</label>
+        <label class="prop-label">{{ t('properties.font') }}</label>
         <select
           class="prop-input"
           :value="discountFontFamily"
@@ -1050,7 +1035,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">字号</label>
+        <label class="prop-label">{{ t('properties.fontSize') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -1062,40 +1047,40 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">字重</label>
+        <label class="prop-label">{{ t('properties.fontWeight') }}</label>
         <select
           class="prop-input"
           :value="discountFontWeight"
           @change="updateProp('ext.fontWeight', fontWeightFromSelect(($event.target as HTMLSelectElement).value))"
         >
-          <option value="normal">正常</option>
-          <option value="bold">粗体</option>
+          <option value="normal">{{ t('properties.normal') }}</option>
+          <option value="bold">{{ t('properties.bold') }}</option>
         </select>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">水平对齐</label>
+        <label class="prop-label">{{ t('properties.horizontalAlign') }}</label>
         <select
           class="prop-input"
           :value="discountTextAlign"
           @change="updateProp('ext.textAlign', ($event.target as HTMLSelectElement).value)"
         >
-          <option value="left">左对齐</option>
-          <option value="center">居中</option>
-          <option value="right">右对齐</option>
+          <option value="left">{{ t('properties.alignLeft') }}</option>
+          <option value="center">{{ t('properties.alignCenter') }}</option>
+          <option value="right">{{ t('properties.alignRight') }}</option>
         </select>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">垂直对齐</label>
+        <label class="prop-label">{{ t('properties.verticalAlign') }}</label>
         <select
           class="prop-input"
           :value="discountVerticalAlign"
           @change="updateProp('ext.verticalAlign', ($event.target as HTMLSelectElement).value)"
         >
-          <option value="top">顶部</option>
-          <option value="middle">居中</option>
-          <option value="bottom">底部</option>
+          <option value="top">{{ t('properties.alignTop') }}</option>
+          <option value="middle">{{ t('properties.alignMiddle') }}</option>
+          <option value="bottom">{{ t('properties.alignBottom') }}</option>
         </select>
       </div>
     </template>
@@ -1103,12 +1088,12 @@ function handleStaticImageFileChange(event: Event) {
     <!-- IMAGE properties -->
     <template v-if="isImage">
       <div class="info-row">
-        <span>图片来源</span>
-        <b>{{ imageSource === 'dynamic' ? '数据字段：图片地址（imageUrl）' : '手动上传 / 图片 URL' }}</b>
+        <span>{{ t('properties.imageSource') }}</span>
+        <b>{{ imageSource === 'dynamic' ? t('properties.imageDynamicSource') : t('properties.imageStaticSource') }}</b>
       </div>
 
       <div class="prop-group prop-wide" v-if="imageSource === 'dynamic'">
-        <label class="prop-label">预览图片地址</label>
+        <label class="prop-label">{{ t('properties.previewImageUrl') }}</label>
         <input
           type="text"
           class="prop-input"
@@ -1119,37 +1104,37 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group prop-wide" v-if="imageSource === 'static'">
-        <label class="prop-label">图片 URL / Base64</label>
+        <label class="prop-label">{{ t('properties.imageUrlBase64') }}</label>
         <input
           type="text"
           class="prop-input"
           :value="imageSrc"
-          placeholder="输入图片 URL 或 Base64"
+          :placeholder="t('properties.imageUrlPlaceholder')"
           @change="updateProp('ext.src', ($event.target as HTMLInputElement).value)"
         />
       </div>
 
       <div class="prop-group prop-wide" v-if="imageSource === 'static'">
-        <label class="prop-label">上传图片</label>
+        <label class="prop-label">{{ t('properties.uploadImage') }}</label>
         <input
           type="file"
           class="prop-input"
           accept="image/*"
           @change="handleStaticImageFileChange"
         />
-        <div class="prop-hint">上传后会保存为 DataURL。</div>
+        <div class="prop-hint">{{ t('properties.uploadImageHint') }}</div>
         <div v-if="imageUploadError" class="prop-error">{{ imageUploadError }}</div>
       </div>
 
       <div v-if="imageLoadError" class="prop-error">{{ imageLoadError }}</div>
 
       <div class="info-row" v-if="imageSource === 'dynamic'">
-        <span>数据字段</span>
+        <span>{{ t('properties.dataField') }}</span>
         <b>{{ fieldOptionLabel('imageUrl') }}</b>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">宽度</label>
+        <label class="prop-label">{{ t('properties.width') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -1159,7 +1144,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">高度</label>
+        <label class="prop-label">{{ t('properties.height') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -1169,18 +1154,18 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">图片填充方式</label>
+        <label class="prop-label">{{ t('properties.imageFit') }}</label>
         <select
           class="prop-input"
           :value="imageFitMode"
           @change="updateProp('ext.fitMode', ($event.target as HTMLSelectElement).value)"
         >
-          <option v-for="m in IMAGE_FIT_MODES" :key="m" :value="m">{{ IMAGE_FIT_MODE_LABELS[m] }}</option>
+          <option v-for="m in IMAGE_FIT_MODES" :key="m" :value="m">{{ imageFitModeLabel(m) }}</option>
         </select>
       </div>
 
       <PaletteColorPicker
-        label="背景色"
+        :label="t('properties.backgroundColor')"
         :colors="palette"
         :model-value="imageBgColor"
         @update:model-value="updateProp('ext.backgroundColor', $event)"
@@ -1190,43 +1175,43 @@ function handleStaticImageFileChange(event: Event) {
     <!-- QRCODE properties -->
     <template v-if="isQrcode">
       <div class="info-row">
-        <span>数据字段</span>
-        <b>{{ qrcodeSource === 'dynamic' ? fieldOptionLabel('qrContent') : '静态内容' }}</b>
+        <span>{{ t('properties.dataField') }}</span>
+        <b>{{ qrcodeSource === 'dynamic' ? fieldOptionLabel('qrContent') : t('properties.staticContent') }}</b>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">内容来源</label>
+        <label class="prop-label">{{ t('properties.source') }}</label>
         <select
           class="prop-input"
           :value="qrcodeSource"
           @change="updateQrcodeSource(($event.target as HTMLSelectElement).value as 'dynamic' | 'static')"
         >
-          <option value="dynamic">动态字段 qrContent</option>
-          <option value="static">静态内容（只影响当前二维码）</option>
+          <option value="dynamic">{{ t('properties.dynamicQrContent') }}</option>
+          <option value="static">{{ t('properties.staticQrContentOption') }}</option>
         </select>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">{{ qrcodeSource === 'static' ? '静态二维码内容' : '预览二维码内容' }}</label>
+        <label class="prop-label">{{ qrcodeSource === 'static' ? t('properties.staticQrLabel') : t('properties.previewQrLabel') }}</label>
         <textarea
           class="prop-input prop-textarea"
           :value="qrcodeContentValue"
           @change="updateQrcodeContent(($event.target as HTMLTextAreaElement).value)"
         ></textarea>
         <div class="prop-hint">
-          {{ qrcodeSource === 'static' ? '保存到当前二维码元素，不随预览数据变化。' : '修改测试数据会刷新所有动态二维码。' }}
+          {{ qrcodeSource === 'static' ? t('properties.qrStaticHint') : t('properties.qrDynamicHint') }}
         </div>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">上传文本内容</label>
+        <label class="prop-label">{{ t('properties.uploadText') }}</label>
         <input class="prop-input" type="file" accept=".txt,text/plain" @change="handleQrcodeTextFileChange" />
-        <div class="prop-hint">仅支持 .txt，文件内容会写入当前二维码内容。</div>
+        <div class="prop-hint">{{ t('properties.uploadTextHint') }}</div>
         <div v-if="qrcodeUploadError" class="prop-error">{{ qrcodeUploadError }}</div>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">宽度</label>
+        <label class="prop-label">{{ t('properties.width') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -1236,7 +1221,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">高度</label>
+        <label class="prop-label">{{ t('properties.height') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -1246,18 +1231,18 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">容错等级</label>
+        <label class="prop-label">{{ t('properties.errorCorrection') }}</label>
         <select
           class="prop-input"
           :value="qrcodeErrorCorrection"
           @change="updateProp('ext.errorCorrection', ($event.target as HTMLSelectElement).value)"
         >
-          <option v-for="e in QRCODE_ERROR_CORRECTIONS" :key="e" :value="e">{{ QRCODE_ERROR_CORRECTION_LABELS[e] }}</option>
+          <option v-for="e in QRCODE_ERROR_CORRECTIONS" :key="e" :value="e">{{ qrcodeErrorCorrectionLabel(e) }}</option>
         </select>
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">二维码留白</label>
+        <label class="prop-label">{{ t('properties.qrMargin') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -1272,14 +1257,14 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <PaletteColorPicker
-        label="前景色"
+        :label="t('properties.foregroundColor')"
         :colors="palette"
         :model-value="qrcodeFgColor"
         @update:model-value="updateProp('ext.foregroundColor', $event)"
       />
 
       <PaletteColorPicker
-        label="背景色"
+        :label="t('properties.backgroundColor')"
         :colors="palette"
         :model-value="qrcodeBgColor"
         @update:model-value="updateProp('ext.backgroundColor', $event)"
@@ -1288,68 +1273,68 @@ function handleStaticImageFileChange(event: Event) {
 
     <!-- BARCODE properties -->
     <template v-if="isBarcode">
-      <div class="section-label">内容</div>
+      <div class="section-label">{{ t('properties.content') }}</div>
       <div class="info-row">
-        <span>数据字段</span>
-        <b>{{ barcodeSource === 'dynamic' ? fieldOptionLabel('barcodeContent') : '静态内容' }}</b>
+        <span>{{ t('properties.dataField') }}</span>
+        <b>{{ barcodeSource === 'dynamic' ? fieldOptionLabel('barcodeContent') : t('properties.staticContent') }}</b>
       </div>
 
       <div class="info-row">
-        <span>条码格式</span>
+        <span>{{ t('properties.barcodeFormat') }}</span>
         <b>CODE128</b>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">内容来源</label>
+        <label class="prop-label">{{ t('properties.source') }}</label>
         <select
           class="prop-input"
           :value="barcodeSource"
           @change="updateBarcodeSource(($event.target as HTMLSelectElement).value as 'dynamic' | 'static')"
         >
-          <option value="dynamic">动态字段 barcodeContent</option>
-          <option value="static">静态内容（只影响当前条形码）</option>
+          <option value="dynamic">{{ t('properties.dynamicBarcodeContent') }}</option>
+          <option value="static">{{ t('properties.staticBarcodeContentOption') }}</option>
         </select>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">{{ barcodeSource === 'static' ? '静态条码内容' : '预览条码内容' }}</label>
+        <label class="prop-label">{{ barcodeSource === 'static' ? t('properties.staticBarcodeLabel') : t('properties.previewBarcodeLabel') }}</label>
         <textarea
           class="prop-input prop-textarea"
           :value="barcodeContentValue"
           @change="updateBarcodeContent(($event.target as HTMLTextAreaElement).value)"
         ></textarea>
         <div class="prop-hint">
-          {{ barcodeSource === 'static' ? '保存到当前条形码元素，不随预览数据变化。' : '修改测试数据会刷新所有动态条形码。' }}
+          {{ barcodeSource === 'static' ? t('properties.barcodeStaticHint') : t('properties.barcodeDynamicHint') }}
         </div>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">上传文本内容</label>
+        <label class="prop-label">{{ t('properties.uploadText') }}</label>
         <input class="prop-input" type="file" accept=".txt,text/plain" @change="handleBarcodeTextFileChange" />
-        <div class="prop-hint">仅支持 .txt，文件内容会写入当前条形码内容。</div>
+        <div class="prop-hint">{{ t('properties.uploadTextHint') }}</div>
         <div v-if="barcodeUploadError" class="prop-error">{{ barcodeUploadError }}</div>
       </div>
 
       <div v-if="barcodeInvalidContent" class="prop-warning">
-        CODE128 仅支持英文、数字和常用半角符号；中文或特殊字符会被忽略，请改用二维码。
+        {{ t('properties.barcodeInvalid') }}
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">显示文本</label>
+        <label class="prop-label">{{ t('properties.showText') }}</label>
         <select
           class="prop-input"
           :value="barcodeShowText ? 'true' : 'false'"
           @change="updateProp('ext.showText', ($event.target as HTMLSelectElement).value === 'true')"
         >
-          <option value="true">是</option>
-          <option value="false">否</option>
+          <option value="true">{{ t('properties.yes') }}</option>
+          <option value="false">{{ t('properties.no') }}</option>
         </select>
       </div>
 
-      <div class="section-label">尺寸</div>
+      <div class="section-label">{{ t('properties.size') }}</div>
 
       <div class="prop-group">
-        <label class="prop-label">宽度</label>
+        <label class="prop-label">{{ t('properties.width') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -1359,7 +1344,7 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
-        <label class="prop-label">高度</label>
+        <label class="prop-label">{{ t('properties.height') }}</label>
         <input
           type="number"
           class="prop-input"
@@ -1368,27 +1353,27 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
 
-      <div class="section-label">样式</div>
+      <div class="section-label">{{ t('properties.style') }}</div>
 
       <PaletteColorPicker
-        label="前景色"
+        :label="t('properties.foregroundColor')"
         :colors="palette"
         :model-value="barcodeFgColor"
         @update:model-value="updateProp('ext.foregroundColor', $event)"
       />
 
       <PaletteColorPicker
-        label="背景色"
+        :label="t('properties.backgroundColor')"
         :colors="palette"
         :model-value="barcodeBgColor"
         @update:model-value="updateProp('ext.backgroundColor', $event)"
       />
 
-      <div class="section-label">可读性</div>
+      <div class="section-label">{{ t('properties.readability') }}</div>
       <div v-if="barcodeWarnings.length" class="prop-warning">
         <div v-for="warning in barcodeWarnings" :key="warning.code">{{ warning.message }}</div>
       </div>
-      <div v-else class="prop-note">当前条码尺寸和颜色未检测到明显可读性问题。</div>
+      <div v-else class="prop-note">{{ t('properties.barcodeReadable') }}</div>
     </template>
     </template>
   </aside>
@@ -1528,6 +1513,8 @@ function handleStaticImageFileChange(event: Event) {
 }
 
 .prop-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 12px;
   color: var(--text-muted);
   font-weight: 750;
@@ -1535,6 +1522,7 @@ function handleStaticImageFileChange(event: Event) {
 
 .prop-input {
   width: 100%;
+  min-width: 0;
   min-height: 38px;
   padding: 9px 10px;
   font-size: 13px;
@@ -1592,6 +1580,7 @@ function handleStaticImageFileChange(event: Event) {
 }
 
 .prop-hint {
+  overflow-wrap: anywhere;
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.45;
@@ -1630,6 +1619,7 @@ function handleStaticImageFileChange(event: Event) {
 }
 
 .properties-panel :deep(.picker-label) {
+  overflow-wrap: anywhere;
   font-size: 12px;
   font-weight: 750;
 }

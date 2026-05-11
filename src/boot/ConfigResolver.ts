@@ -10,6 +10,7 @@ import type {
   EditorMode,
 } from './types';
 import { BootConfigError } from './types';
+import { resolvePreviewData, resolveRegionalPreferences, translate } from '@/i18n';
 
 /** Maps external colorMode to internal ScreenType */
 function colorModeToScreenType(colorMode: string): ScreenType {
@@ -41,6 +42,10 @@ export class ConfigResolver {
     // Map colorMode → ScreenType → ScreenProfile
     const screenType = colorModeToScreenType(payload.profile.colorMode);
     const profile = this.buildProfile(screenType, payload.profile);
+    const regional = resolveRegionalPreferences({
+      locale: payload.locale,
+      market: payload.market,
+    });
 
     return {
       mode: payload.mode,
@@ -58,8 +63,9 @@ export class ConfigResolver {
         ? { id: payload.templateId, data: payload.fullJson ?? { objects: [] } }
         : undefined,
       templateName: payload.templateName,
-      previewData: payload.previewData,
+      previewData: resolvePreviewData(payload.previewData, regional.market),
       staticDynamic: payload.staticDynamic,
+      ...regional,
       api: {
         baseUrl: '/api',
       },
@@ -86,6 +92,7 @@ export class ConfigResolver {
     );
 
     const profile = this.resolveProfile(screenType, remoteScreenConfig);
+    const regional = resolveRegionalPreferences();
 
     const width = this.resolveNumber(
       urlParams.width,
@@ -114,6 +121,8 @@ export class ConfigResolver {
       template: remoteTemplate
         ? { id: remoteTemplate.id, data: remoteTemplate.fabricJson }
         : undefined,
+      previewData: resolvePreviewData(undefined, regional.market),
+      ...regional,
       api: {
         baseUrl: urlParams.apiBase || '/api',
       },
@@ -125,9 +134,7 @@ export class ConfigResolver {
 
   private validateMode(mode: unknown): asserts mode is EditorMode {
     if (!mode || (mode !== 'create' && mode !== 'edit')) {
-      throw new BootConfigError(
-        `初始化失败：mode 必须为 "create" 或 "edit"，当前值为 "${mode ?? '(缺失)'}"`
-      );
+      throw new BootConfigError(translate('errors.bootInvalidMode', { mode: mode ?? '(missing)' }));
     }
   }
 
@@ -138,34 +145,26 @@ export class ConfigResolver {
     const { width, height } = profile;
 
     if (width === undefined || width === null) {
-      throw new BootConfigError('初始化失败：profile.width 不能为空');
+      throw new BootConfigError(translate('errors.bootWidthRequired'));
     }
     if (height === undefined || height === null) {
-      throw new BootConfigError('初始化失败：profile.height 不能为空');
+      throw new BootConfigError(translate('errors.bootHeightRequired'));
     }
 
     const w = Number(width);
     const h = Number(height);
 
     if (isNaN(w) || !isFinite(w)) {
-      throw new BootConfigError(
-        `初始化失败：profile.width 必须为数字，当前值为 "${width}"`
-      );
+      throw new BootConfigError(translate('errors.bootWidthNumber', { value: width }));
     }
     if (isNaN(h) || !isFinite(h)) {
-      throw new BootConfigError(
-        `初始化失败：profile.height 必须为数字，当前值为 "${height}"`
-      );
+      throw new BootConfigError(translate('errors.bootHeightNumber', { value: height }));
     }
     if (w <= 0) {
-      throw new BootConfigError(
-        `初始化失败：profile.width 必须大于 0，当前值为 ${w}`
-      );
+      throw new BootConfigError(translate('errors.bootWidthPositive', { value: w }));
     }
     if (h <= 0) {
-      throw new BootConfigError(
-        `初始化失败：profile.height 必须大于 0，当前值为 ${h}`
-      );
+      throw new BootConfigError(translate('errors.bootHeightPositive', { value: h }));
     }
   }
 
@@ -175,15 +174,13 @@ export class ConfigResolver {
     profile: ScreenProfile
   ): void {
     if (width <= 0 || height <= 0) {
-      throw new BootConfigError(`Invalid dimensions: ${width}x${height}`);
+      throw new BootConfigError(translate('errors.bootInvalidDimensions', { width, height }));
     }
     if (width > 4096 || height > 4096) {
-      throw new BootConfigError(
-        `Dimensions too large: ${width}x${height}, max 4096`
-      );
+      throw new BootConfigError(translate('errors.bootDimensionsTooLarge', { width, height }));
     }
     if (profile.palette.length < 2) {
-      throw new BootConfigError('Palette must have >= 2 colors');
+      throw new BootConfigError(translate('errors.bootPaletteMin'));
     }
   }
 
@@ -252,7 +249,7 @@ export class ConfigResolver {
       const n = Number(c);
       if (!isNaN(n) && n > 0) return n;
     }
-    throw new BootConfigError('Cannot resolve canvas dimension');
+    throw new BootConfigError(translate('errors.bootDimensionResolve'));
   }
 }
 

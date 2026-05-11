@@ -9,6 +9,7 @@ import type {
   PriceExtension,
   QrcodeExtension,
 } from '@/stores/editorStore';
+import { translate } from '@/i18n';
 import { DEFAULT_EDITOR_FONT_FAMILY, resolveEditorFontFamily, resolveEditorFontWeight } from '@/fonts';
 
 export interface VisualBounds {
@@ -195,7 +196,7 @@ export async function createImageVisual(bounds: VisualBounds, ext: ImageExtensio
 
   if (ext.src) {
     const image = await loadFabricImage(ext.src).catch(() => {
-      loadError = '图片加载失败，请检查图片地址或文件内容';
+      loadError = translate('errors.imageLoad');
       return null;
     });
     if (image) {
@@ -203,7 +204,7 @@ export async function createImageVisual(bounds: VisualBounds, ext: ImageExtensio
       objects.push(image);
       loadStatus = 'loaded';
     } else {
-      addImagePlaceholder(objects, bounds, '图片加载失败', '请检查地址或重新上传');
+      addImagePlaceholder(objects, bounds, translate('errors.imageLoadShort'), translate('errors.imageLoadHelp'));
     }
   }
 
@@ -211,8 +212,8 @@ export async function createImageVisual(bounds: VisualBounds, ext: ImageExtensio
     addImagePlaceholder(
       objects,
       bounds,
-      ext.source === 'dynamic' ? 'imageUrl 为空' : '未选择图片',
-      ext.source === 'dynamic' ? '等待动态图片地址' : '上传或输入图片地址'
+      ext.source === 'dynamic' ? translate('errors.imageEmptyDynamic') : translate('errors.imageEmptyStatic'),
+      ext.source === 'dynamic' ? translate('errors.imageEmptyDynamicHelp') : translate('errors.imageEmptyStaticHelp')
     );
   }
 
@@ -346,7 +347,10 @@ export function getQrcodeReadabilityWarnings(
   return [{
     code: 'qrcode-too-small',
     severity: 'warning',
-    message: `二维码偏小：当前每格约 ${modulePixels.toFixed(1)}px，建议尺寸至少 ${recommendedSize}×${recommendedSize}px。`,
+    message: translate('warnings.qrcodeTooSmall', {
+      modulePixels: modulePixels.toFixed(1),
+      size: recommendedSize,
+    }),
   }];
 }
 
@@ -368,7 +372,10 @@ export function getBarcodeReadabilityWarnings(
     warnings.push({
       code: 'barcode-too-narrow',
       severity: 'warning',
-      message: `条码宽度偏窄：当前最细条约 ${modulePixels.toFixed(1)}px，建议宽度至少 ${Math.ceil(totalModules * MIN_BARCODE_MODULE_PIXELS + quietZone * 2)}px。`,
+      message: translate('warnings.barcodeTooNarrow', {
+        modulePixels: modulePixels.toFixed(1),
+        width: Math.ceil(totalModules * MIN_BARCODE_MODULE_PIXELS + quietZone * 2),
+      }),
     });
   }
 
@@ -376,7 +383,10 @@ export function getBarcodeReadabilityWarnings(
     warnings.push({
       code: 'barcode-content-too-long',
       severity: 'warning',
-      message: `条码内容较长：当前 ${rawValue.length} 字符，建议不超过 ${LONG_BARCODE_CONTENT_LENGTH} 字符或继续加宽。`,
+      message: translate('warnings.barcodeTooLong', {
+        length: rawValue.length,
+        max: LONG_BARCODE_CONTENT_LENGTH,
+      }),
     });
   }
 
@@ -467,7 +477,10 @@ function getPriceFitWarnings(
   return [{
     code: 'price-fit-overflow',
     severity: 'warning',
-    message: `价格内容可能超出 ${Math.round(bounds.width)}×${Math.round(bounds.height)} 区域；画布会忠实使用你的字号，请增大容器或调小字号。`,
+    message: translate('warnings.priceOverflow', {
+      width: Math.round(bounds.width),
+      height: Math.round(bounds.height),
+    }),
   }];
 }
 
@@ -478,7 +491,7 @@ function getDiscountFitWarnings(bounds: VisualBounds, text: string, ext: Discoun
   return [{
     code: 'discount-fit-overflow',
     severity: 'warning',
-    message: '折扣文字可能超出容器；画布会忠实使用你的字号，请增大容器或调小字号。',
+    message: translate('warnings.discountOverflow'),
   }];
 }
 

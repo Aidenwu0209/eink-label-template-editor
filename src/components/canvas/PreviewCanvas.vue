@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useEditorStore } from '@/stores/editorStore';
 import type { EditorCore } from '@/core/EditorCore';
 
@@ -11,6 +12,7 @@ const props = defineProps<{
 
 const canvasRef = ref<HTMLCanvasElement>();
 const editorStore = useEditorStore();
+const { t } = useI18n();
 const isRendering = ref(false);
 let detachPreviewListeners: (() => void) | null = null;
 let renderingTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -99,10 +101,10 @@ onUnmounted(() => {
 <template>
   <div class="preview-canvas-wrapper">
     <div v-if="props.showHeader !== false" class="preview-header">
-      <span class="preview-title">电子墨水预览</span>
-      <span v-if="isRendering" class="preview-badge">渲染中...</span>
+      <span class="preview-title">{{ t('editor.previewTitle') }}</span>
+      <span v-if="isRendering" class="preview-badge">{{ t('editor.rendering') }}</span>
     </div>
-    <span v-else-if="isRendering" class="preview-badge floating">渲染中...</span>
+    <span v-else-if="isRendering" class="preview-badge floating">{{ t('editor.rendering') }}</span>
     <canvas
       ref="canvasRef"
       :width="props.width"

@@ -24,11 +24,12 @@ import {
   createQrcodeVisual,
   type VisualBounds,
 } from '@/rendering/componentVisuals';
+import { getMarketProfile, translate, type LocaleCode, type MarketCode } from '@/i18n';
 
 /** Error thrown when neither onSave nor saveApi is configured */
 export class SaveConfigError extends Error {
   constructor() {
-    super('保存配置错误：未提供 onSave 回调或 saveApi 地址');
+    super(translate('errors.saveConfig'));
     this.name = 'SaveConfigError';
   }
 }
@@ -37,7 +38,7 @@ export class SaveConfigError extends Error {
 export class SaveApiError extends Error {
   readonly status: number;
   constructor(status: number, statusText: string) {
-    super(`保存请求失败：${status} ${statusText}`);
+    super(translate('errors.saveApi', { status, statusText }));
     this.name = 'SaveApiError';
     this.status = status;
   }
@@ -46,7 +47,7 @@ export class SaveApiError extends Error {
 /** Error thrown when saveApi network request fails */
 export class SaveNetworkError extends Error {
   constructor(cause: string) {
-    super(`保存网络错误：${cause}`);
+    super(translate('errors.saveNetwork', { cause }));
     this.name = 'SaveNetworkError';
   }
 }
@@ -290,17 +291,6 @@ const RUNTIME_STATE_KEYS = [
   'lockSkewingY',
   'locked',
 ];
-
-const OBJECT_TYPE_LABELS: Record<string, string> = {
-  RECT: '矩形框',
-  LINE: '直线',
-  TEXT: '文本',
-  PRICE: '价格',
-  DISCOUNT: '折扣',
-  IMAGE: '图片',
-  QRCODE: '二维码',
-  BARCODE: '条形码',
-};
 
 type PresetElementType =
   | 'RECT'
@@ -686,6 +676,54 @@ export const useEditorStore = defineStore('editor', () => {
     return { backgroundColor: '#000000', textColor: '#FFFFFF' };
   }
 
+  function getMarketPriceDefaults(config: BootConfig) {
+    return config.marketProfile.price;
+  }
+
+  function getStarterText(config: BootConfig) {
+    return {
+      ...config.marketProfile.starterText,
+      defaultTemplateName: translate('starter.defaultTemplateName'),
+      productName: translate('starter.productName'),
+      productTitle: translate('starter.productTitle'),
+      specText: translate('starter.specText'),
+      promoText: translate('starter.promoText'),
+      memberLabel: translate('starter.memberLabel'),
+      qrHeadline: translate('starter.qrHeadline'),
+      qrDescription: translate('starter.qrDescription'),
+    };
+  }
+
+  function shouldReplaceMarketSampleValue(current: unknown, previousSample: unknown): boolean {
+    return current == null || current === '' || current === previousSample;
+  }
+
+  function applyMarketSamplePreviewData(config: BootConfig, nextMarket: MarketCode): void {
+    const previousProfile = config.marketProfile;
+    const nextProfile = getMarketProfile(nextMarket);
+    const previewData = config.previewData ??= {};
+
+    for (const [field, nextValue] of Object.entries(nextProfile.samplePreviewData)) {
+      const previousValue = previousProfile.samplePreviewData[field];
+      if (shouldReplaceMarketSampleValue(previewData[field], previousValue)) {
+        previewData[field] = nextValue;
+      }
+    }
+  }
+
+  function applyRegionalPreferences(locale: LocaleCode, market: MarketCode): void {
+    const core = editor.value;
+    if (!core) return;
+    const marketChanged = core.bootConfig.market !== market;
+    if (marketChanged) {
+      applyMarketSamplePreviewData(core.bootConfig, market);
+    }
+    core.bootConfig.locale = locale;
+    core.bootConfig.market = market;
+    core.bootConfig.marketProfile = getMarketProfile(market);
+    selectionVersion.value++;
+  }
+
   function normalizeQrcodeExtension(ext: Partial<QrcodeExtension> | undefined): QrcodeExtension {
     const source = ext?.source ?? 'dynamic';
     return {
@@ -726,7 +764,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   function getObjectLayerLabel(obj: fabric.Object, index: number): string {
     const type = getObjectType(obj);
-    const typeLabel = OBJECT_TYPE_LABELS[type] ?? type;
+    const typeLabel = translate(`objects.${type}`);
     if (type === 'TEXT') {
       const text = ((obj as fabric.Textbox).text ?? '').trim();
       return text ? `${typeLabel} · ${text.slice(0, 12)}` : typeLabel;
@@ -1264,7 +1302,7 @@ function historySignature(state: HistoryState): string {
 
     const bounds = getToolBounds(core, 'TEXT', position);
 
-    const text = new fabric.Textbox('商品名称', {
+    const text = new fabric.Textbox(getStarterText(core.bootConfig).productName, {
       left: bounds.left,
       top: bounds.top,
       originX: 'left',
@@ -1339,14 +1377,15 @@ function historySignature(state: HistoryState): string {
     const mainCurrencySize = variant === 'main' ? 13 : 9;
     const mainDecimalSize = variant === 'main' ? 16 : 9;
     const mainColor = variant === 'main' ? accent : '#000000';
+    const priceDefaults = getMarketPriceDefaults(config);
     const ext = {
       fieldBinding,
       fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
-      currencySymbol: '¥',
-      showCurrency: true,
-      decimalPlaces: 2,
-      thousandSeparator: ',',
-      decimalSeparator: '.',
+      currencySymbol: priceDefaults.currencySymbol,
+      showCurrency: priceDefaults.showCurrency,
+      decimalPlaces: priceDefaults.decimalPlaces,
+      thousandSeparator: priceDefaults.thousandSeparator,
+      decimalSeparator: priceDefaults.decimalSeparator,
       currencyStyle: {
         fontSize: scaledPresetValue(config, mainCurrencySize),
         fontWeight: variant === 'main' ? 'bold' as const : 'normal' as const,
@@ -1372,7 +1411,7 @@ function historySignature(state: HistoryState): string {
     const { backgroundColor, textColor } = getDiscountBadgeColors(config);
     const ext = {
       fieldBinding: 'discount',
-      formatTemplate: '{value}折',
+      formatTemplate: config.marketProfile.discountFormatTemplate,
       backgroundColor,
       showBackground: true,
       borderWidth: 0,
@@ -1509,7 +1548,7 @@ function historySignature(state: HistoryState): string {
     const bounds = getToolBounds(core, 'DISCOUNT', position);
     const ext = {
       fieldBinding: 'discount',
-      formatTemplate: '{value}折',
+      formatTemplate: config.marketProfile.discountFormatTemplate,
       backgroundColor: '#FFFFFF',
       showBackground: false,
       borderWidth: 0,
@@ -1531,15 +1570,16 @@ function historySignature(state: HistoryState): string {
     const config = core.bootConfig;
     const bounds = getToolBounds(core, 'PRICE', position);
     const { accent } = getPaletteAccentColors(config);
+    const priceDefaults = getMarketPriceDefaults(config);
 
     const ext = {
       fieldBinding: 'price',
       fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
-      currencySymbol: '¥',
-      showCurrency: true,
-      decimalPlaces: 2,
-      thousandSeparator: ',',
-      decimalSeparator: '.',
+      currencySymbol: priceDefaults.currencySymbol,
+      showCurrency: priceDefaults.showCurrency,
+      decimalPlaces: priceDefaults.decimalPlaces,
+      thousandSeparator: priceDefaults.thousandSeparator,
+      decimalSeparator: priceDefaults.decimalSeparator,
       currencyStyle: {
         fontSize: Math.max(9, scaledPresetValue(config, 13)),
         fontWeight: 'normal' as const,
@@ -1665,24 +1705,25 @@ function historySignature(state: HistoryState): string {
 
     const config = core.bootConfig;
     const bounds = getSnippetBounds(core, kind, position);
+    const starterText = getStarterText(config);
 
     if (kind === 'PRODUCT_TITLE') {
       addVisualObject(createStarterTextObject(config, bounds, {
-        fallback: '商品标题',
+        fallback: starterText.productTitle,
         fieldBinding: 'productName',
         fontSize: 15,
         fontWeight: 'bold',
       }));
     } else if (kind === 'SPEC_TEXT') {
       addVisualObject(createStarterTextObject(config, bounds, {
-        fallback: '规格 / 产地',
+        fallback: starterText.specText,
         fieldBinding: config.previewData?.spec != null ? 'spec' : 'description',
         fontSize: 9,
         fontWeight: 'normal',
       }));
     } else if (kind === 'PROMO_TEXT') {
       addVisualObject(createStarterTextObject(config, bounds, {
-        fallback: '限时优惠',
+        fallback: starterText.promoText,
         fieldBinding: config.previewData?.promoText != null ? 'promoText' : 'description',
         fontSize: 10,
         fontWeight: 'bold',
@@ -1733,11 +1774,12 @@ function historySignature(state: HistoryState): string {
     const config = core.bootConfig;
     const bounds = (left: number, top: number, width: number, height: number) =>
       scaledStarterBounds(config, { left, top, width, height });
+    const starterText = getStarterText(config);
 
     if (kind === 'retail') {
       replaceCanvasObjects([
         createStarterTextObject(config, bounds(10, 10, 170, 22), {
-          fallback: '商品名称',
+          fallback: starterText.productName,
           fieldBinding: 'productName',
           fontSize: 15,
         }),
@@ -1748,13 +1790,13 @@ function historySignature(state: HistoryState): string {
     } else if (kind === 'barcode') {
       replaceCanvasObjects([
         createStarterTextObject(config, bounds(10, 12, 205, 22), {
-          fallback: '商品名称',
+          fallback: starterText.productName,
           fieldBinding: 'productName',
           fontSize: 15,
         }),
         createStarterBarcodeObject(config, bounds(10, 48, 190, 42), false),
         createStarterTextObject(config, bounds(10, 94, 190, 16), {
-          fallback: String(config.previewData?.barcodeContent ?? 'SKU1001'),
+          fallback: String(config.previewData?.barcodeContent ?? starterText.barcodeFallback),
           fieldBinding: 'barcodeContent',
           fontSize: 9,
           fontWeight: 'normal',
@@ -1766,13 +1808,13 @@ function historySignature(state: HistoryState): string {
       replaceCanvasObjects([
         createStarterQrcodeObject(config, bounds(10, 28, 72, 72)),
         createStarterTextObject(config, bounds(96, 16, 180, 22), {
-          fallback: '扫码查看详情',
+          fallback: starterText.qrHeadline,
           fieldBinding: 'productName',
           fontSize: 15,
         }),
         createStarterDiscountObject(config, bounds(96, 52, 128, 34)),
         createStarterTextObject(config, bounds(96, 92, 180, 18), {
-          fallback: '扫描二维码领取优惠',
+          fallback: starterText.qrDescription,
           fieldBinding: 'description',
           fontSize: 10,
           fontWeight: 'normal',
@@ -2486,7 +2528,7 @@ function historySignature(state: HistoryState): string {
         body: JSON.stringify(payload),
       });
     } catch (err: any) {
-      throw new SaveNetworkError(err?.message ?? '网络请求失败');
+      throw new SaveNetworkError(err?.message ?? translate('errors.networkRequest'));
     }
     if (!response.ok) {
       throw new SaveApiError(response.status, response.statusText);
@@ -2538,7 +2580,7 @@ function historySignature(state: HistoryState): string {
 
       return payload;
     } catch (err: any) {
-      saveError.value = err?.message ?? '未知保存错误';
+      saveError.value = err?.message ?? translate('editor.unknownError');
       throw err;
     } finally {
       isSaving.value = false;
@@ -2586,6 +2628,7 @@ function historySignature(state: HistoryState): string {
     addElement,
     addSnippet,
     applyStarterTemplate,
+    applyRegionalPreferences,
     applyRecognizedPriceTagTemplate,
     clearCanvasObjects,
     resizeCanvas,

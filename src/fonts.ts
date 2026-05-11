@@ -4,27 +4,27 @@ export const DEFAULT_EDITOR_FONT_FAMILY =
 export const FONT_FAMILY_OPTIONS = [
   {
     value: DEFAULT_EDITOR_FONT_FAMILY,
-    label: '系统黑体（中英数字）',
+    label: 'System Sans (CJK + Latin)',
   },
   {
     value: '"Microsoft YaHei", "PingFang SC", Arial, sans-serif',
-    label: '微软雅黑 / 苹方',
+    label: 'Microsoft YaHei / PingFang',
   },
   {
     value: '"Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", sans-serif',
-    label: '思源黑体 / Noto Sans',
+    label: 'Source Han Sans / Noto Sans',
   },
   {
     value: '"Songti SC", SimSun, "Noto Serif CJK SC", serif',
-    label: '宋体 / Serif',
+    label: 'Songti / Serif',
   },
   {
     value: '"Kaiti SC", KaiTi, "STKaiti", serif',
-    label: '楷体',
+    label: 'Kaiti / Kai',
   },
   {
     value: 'Arial, "PingFang SC", sans-serif',
-    label: 'Arial 数字优先',
+    label: 'Arial numeric-first',
   },
   {
     value: 'Georgia, "Songti SC", serif',

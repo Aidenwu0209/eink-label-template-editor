@@ -6,6 +6,7 @@ import type {
   PriceTagFields,
   RecognizedPriceTag,
 } from './types';
+import { translate } from '@/i18n';
 
 const PROMO_KEYWORDS = /会员|促销|特价|优惠|满减|满.*减|立减|折|秒杀|活动|限时|买赠/;
 const PRICE_KEYWORDS = /价|售价|零售价|会员价|促销价|特价|到手价|retail\s*price|sale\s*price|price|[$¥￥元]/i;
@@ -49,7 +50,7 @@ export function extractPriceTagFromOcr(
   const fields: PriceTagFields = {};
 
   if (!items.length) {
-    warnings.push('未识别到有效文字，请尝试更清晰的价签图片或改用 API 识别。');
+    warnings.push(translate('ocr.noTextWarning'));
   }
 
   const prices = rankPriceCandidates(items);
@@ -74,7 +75,7 @@ export function extractPriceTagFromOcr(
     usedIds.add(mainPrice.item.id);
     assignLine(lineAssignments, mainPrice.item, 'price', 'price');
   } else if (items.length) {
-    warnings.push('未能可靠识别主价格，生成模板后请手动确认价格字段。');
+    warnings.push(translate('ocr.priceUncertainWarning'));
   }
 
   const discountItem = items.find((item) => DISCOUNT_PATTERN.test(item.text));
@@ -147,7 +148,7 @@ export function extractPriceTagFromOcr(
       assignLine(lineAssignments, item, 'productName', 'productName');
     });
   } else if (items.length) {
-    warnings.push('未能可靠识别商品名称，已把剩余文字保留为自定义字段。');
+    warnings.push(translate('ocr.productNameUncertainWarning'));
   }
 
   const description = inferDescription(items, usedIds);
@@ -324,7 +325,7 @@ function assignCodeLines(
     if (qrItem) {
       usedIds.add(qrItem.id);
       assignLine(assignments, qrItem, 'qrContent', 'qrContent', {
-        warning: '该行疑似二维码内容，已按二维码数据保留。',
+        warning: translate('ocr.qrLineWarning'),
       });
     }
   }
@@ -337,7 +338,7 @@ function assignCodeLines(
     if (barcodeItem) {
       usedIds.add(barcodeItem.id);
       assignLine(assignments, barcodeItem, 'barcodeContent', 'barcodeContent', {
-        warning: '该行疑似条码内容，已按条码数据保留。',
+        warning: translate('ocr.barcodeLineWarning'),
       });
     }
   }
@@ -372,10 +373,10 @@ function buildLineItems(
     const warnings = [...(assignment?.warnings ?? [])];
 
     if (!assignment) {
-      warnings.push('未归类，已按普通文本加入模板。');
+      warnings.push(translate('ocr.unclassifiedLineWarning'));
     }
     if (item.score > 0 && item.score < 0.55) {
-      warnings.push('OCR 置信度偏低，请生成前核对文字。');
+      warnings.push(translate('ocr.lowConfidenceWarning'));
     }
 
     return {

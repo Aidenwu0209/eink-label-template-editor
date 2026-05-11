@@ -3,7 +3,7 @@ import type { ScreenProfile } from '../types';
 
 export const BW_PROFILE: ScreenProfile = {
   type: ScreenType.BW,
-  displayName: '黑白屏',
+  displayName: 'Black/white display',
   palette: [
     { name: 'Black', hex: '#000000', rgb: [0, 0, 0], deviceIndex: 0 },
     { name: 'White', hex: '#FFFFFF', rgb: [255, 255, 255], deviceIndex: 1 },

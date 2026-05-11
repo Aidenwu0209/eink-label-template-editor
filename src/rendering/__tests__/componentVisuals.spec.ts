@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createBarcodeVisual,
   createDiscountVisual,
+  formatPrice,
   createPriceVisual,
   createQrcodeVisual,
   getBarcodeReadabilityWarnings,
@@ -11,6 +12,7 @@ import { ScreenType } from '@/screen/types';
 import type { BootConfig } from '@/boot/types';
 import type { BarcodeExtension, DiscountExtension, PriceExtension, QrcodeExtension } from '@/stores/editorStore';
 import type * as fabric from 'fabric';
+import { MARKET_PROFILES } from '@/i18n/market';
 
 const qrcodeExt: QrcodeExtension = {
   source: 'dynamic',
@@ -55,6 +57,9 @@ const config: BootConfig = {
     palette: [],
   },
   previewData: { price: 123456.78, discount: 8.8, qrContent: 'https://example.com/product/1001', barcodeContent: 'SKU1001' },
+  locale: 'zh-CN',
+  market: 'CN',
+  marketProfile: MARKET_PROFILES.CN,
   api: { baseUrl: '/api' },
 };
 
@@ -69,6 +74,27 @@ function getAbsoluteBounds(object: fabric.Object): { left: number; top: number; 
 }
 
 describe('component readability warnings', () => {
+  it('formats CN and EU prices using the active market separators', () => {
+    const base: Omit<PriceExtension, 'currencySymbol' | 'showCurrency' | 'decimalPlaces' | 'thousandSeparator' | 'decimalSeparator'> = {
+      fieldBinding: 'price',
+      fontFamily: 'AlibabaPuHuiTi',
+      currencyStyle: { fontSize: 40, fontWeight: 'bold', color: '#000000' },
+      integerStyle: { fontSize: 80, fontWeight: 'bold', color: '#000000' },
+      decimalStyle: { fontSize: 48, fontWeight: 'bold', color: '#000000', offsetY: -20 },
+    };
+
+    expect(formatPrice(123456.78, { ...base, ...MARKET_PROFILES.CN.price })).toEqual({
+      currency: '¥',
+      integer: '123,456',
+      decimal: '.78',
+    });
+    expect(formatPrice(123456.78, { ...base, ...MARKET_PROFILES.EU.price })).toEqual({
+      currency: '€',
+      integer: '123.456',
+      decimal: ',78',
+    });
+  });
+
   it('warns when a QR code module would render too small', () => {
     const warnings = getQrcodeReadabilityWarnings(
       { left: 0, top: 0, width: 24, height: 24 },

@@ -3,7 +3,7 @@ import type { ScreenProfile } from '../types';
 
 export const TRI_PROFILE: ScreenProfile = {
   type: ScreenType.TRI,
-  displayName: '三色屏 (黑白红)',
+  displayName: 'Three-color display (BWR)',
   palette: [
     { name: 'Black', hex: '#000000', rgb: [0, 0, 0], deviceIndex: 0 },
     { name: 'White', hex: '#FFFFFF', rgb: [255, 255, 255], deviceIndex: 1 },
