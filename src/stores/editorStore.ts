@@ -5,7 +5,7 @@ import { EditorCore } from '@/core/EditorCore';
 import { EinkColorPlugin } from '@/plugins/eink/EinkColorPlugin';
 import { EinkRenderPlugin } from '@/plugins/eink/EinkRenderPlugin';
 import { EinkExportPlugin } from '@/plugins/eink/EinkExportPlugin';
-import type { BootConfig, FabricJSON, FabricObjectJSON } from '@/boot/types';
+import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData } from '@/boot/types';
 import type { ColorEntry } from '@/screen/types';
 import { buildSavePayload, type SavePayload } from '@/export/SavePayloadBuilder';
 import {
@@ -180,6 +180,7 @@ export interface LayerEntry {
 type HorizontalAlignment = 'left' | 'center' | 'right';
 type VerticalAlignment = 'top' | 'middle' | 'bottom';
 type LayerMove = 'forward' | 'backward' | 'front' | 'back';
+export type StarterTemplateKind = 'retail' | 'barcode' | 'qr';
 
 interface HistoryState {
   version?: string;
@@ -901,6 +902,20 @@ export const useEditorStore = defineStore('editor', () => {
     });
   }
 
+  function clearCanvasObjects(): void {
+    const core = editor.value;
+    if (!core) return;
+    const objects = getCanvasDrawableObjects(core);
+    if (!objects.length) return;
+
+    runHistoryMutation(() => {
+      core.fabricCanvas.discardActiveObject();
+      objects.forEach((obj) => core.fabricCanvas.remove(obj));
+      selectedObject.value = null;
+      core.fabricCanvas.renderAll();
+    });
+  }
+
   function getObjectBounds(obj: fabric.Object): VisualBounds {
     const scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX ?? 1 : 1;
     const scaleY = Number.isFinite(obj.scaleY) ? obj.scaleY ?? 1 : 1;
@@ -1199,6 +1214,28 @@ export const useEditorStore = defineStore('editor', () => {
     addVisualObject(createBarcodeVisual(bounds, config.previewData?.barcodeContent, ext));
   }
 
+  function applyStarterTemplate(kind: StarterTemplateKind): void {
+    const core = editor.value;
+    if (!core) return;
+
+    clearCanvasObjects();
+
+    if (kind === 'retail') {
+      addText();
+      addPrice();
+      addDiscount();
+      addBarcode();
+    } else if (kind === 'barcode') {
+      addText();
+      addBarcode();
+      addQrcode();
+    } else {
+      addText();
+      addQrcode();
+      addDiscount();
+    }
+  }
+
   async function updateObjectProp(key: string, value: unknown): Promise<void> {
     const obj = selectedObject.value;
     const core = editor.value;
@@ -1300,6 +1337,53 @@ export const useEditorStore = defineStore('editor', () => {
 
     selectionVersion.value++;
     commitHistory();
+  }
+
+  function normalizePreviewDataValue(field: string, value: unknown): unknown {
+    if (field === 'price' || field === 'discount') {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : value;
+    }
+    return value;
+  }
+
+  function isPreviewFieldObject(obj: fabric.Object, field: string): boolean {
+    const type = (obj as any).extensionType as string | undefined;
+    const ext = (obj as any).extension as { fieldBinding?: string | null; source?: string } | undefined;
+
+    if (type === 'TEXT') return ext?.fieldBinding === field;
+    if (type === 'PRICE') return field === 'price';
+    if (type === 'DISCOUNT') return field === 'discount';
+    if (type === 'IMAGE') return ext?.source === 'dynamic' && ext?.fieldBinding === field;
+    if (type === 'QRCODE') return field === 'qrContent';
+    if (type === 'BARCODE') return field === 'barcodeContent';
+    return false;
+  }
+
+  async function updatePreviewDataField(field: string, value: unknown): Promise<void> {
+    const core = editor.value;
+    if (!core || !field) return;
+
+    const previewData = (core.bootConfig.previewData ??= {} as PreviewData);
+    previewData[field] = normalizePreviewDataValue(field, value);
+
+    historySuppression++;
+    try {
+      const objects = getCanvasDrawableObjects(core).filter((obj) => isPreviewFieldObject(obj, field));
+      for (const obj of objects) {
+        if ((obj as any).extensionType === 'TEXT') {
+          updateDynamicText(obj);
+          obj.setCoords();
+        } else {
+          await refreshExtendedObject(obj);
+        }
+      }
+      core.fabricCanvas.requestRenderAll();
+    } finally {
+      historySuppression--;
+    }
+
+    selectionVersion.value++;
   }
 
   async function loadTemplate(json: FabricJSON): Promise<void> {
@@ -1633,6 +1717,30 @@ export const useEditorStore = defineStore('editor', () => {
     selectObjects(core, [obj]);
   }
 
+  function moveLayerTo(sourceId: string, targetId: string): void {
+    const core = editor.value;
+    if (!core || sourceId === targetId) return;
+
+    const drawableObjects = getCanvasDrawableObjects(core);
+    const source = drawableObjects.find((obj) => (obj as any).id === sourceId);
+    const target = drawableObjects.find((obj) => (obj as any).id === targetId);
+    if (!source || !target || source === target) return;
+
+    const targetDrawableIndex = drawableObjects.indexOf(target);
+    runHistoryMutation(() => {
+      discardActiveSelectionForMutation(core, [source]);
+      core.fabricCanvas.moveObjectTo(source, targetDrawableIndex + 1);
+      selectObjects(core, [source]);
+      core.fabricCanvas.renderAll();
+    });
+  }
+
+  async function exportCurrentTemplate(): Promise<FabricJSON> {
+    const core = editor.value;
+    if (!core) throw new Error('Editor not initialized');
+    return core.exportJSON();
+  }
+
   /** Get TEXT extension data from selected object */
   function getTextExtension(): TextExtension | null {
     const obj = selectedObject.value;
@@ -1783,7 +1891,10 @@ export const useEditorStore = defineStore('editor', () => {
     addDiscount,
     addQrcode,
     addBarcode,
+    applyStarterTemplate,
+    clearCanvasObjects,
     updateObjectProp,
+    updatePreviewDataField,
     undo,
     redo,
     deleteSelected,
@@ -1798,6 +1909,8 @@ export const useEditorStore = defineStore('editor', () => {
     alignSelectedVertical,
     toggleLockSelected,
     selectObjectById,
+    moveLayerTo,
+    exportCurrentTemplate,
     getTextExtension,
     getImageExtension,
     getPriceExtension,

@@ -6,15 +6,18 @@ import { filterValidCustomFieldIds, TEXT_BINDABLE_FIELDS } from '@/fields';
 import { TEXT_OVERFLOW_MODES, IMAGE_FIT_MODES, QRCODE_ERROR_CORRECTIONS } from '@/stores/editorStore';
 import type { TextExtension, TextOverflowMode, ImageExtension, ImageFitMode, PriceExtension, DiscountExtension, QrcodeExtension, QrcodeErrorCorrection, BarcodeExtension } from '@/stores/editorStore';
 import type { ColorEntry } from '@/screen/types';
+import type { PreviewData } from '@/boot/types';
 
 const props = defineProps<{
   selectedObject: fabric.Object | null;
   palette: ColorEntry[];
   customFields?: string[];
+  previewData?: PreviewData;
 }>();
 
 const emit = defineEmits<{
   'update-prop': [key: string, value: unknown];
+  'update-preview-field': [field: string, value: unknown];
 }>();
 
 const OBJECT_TYPE_LABELS = {
@@ -131,6 +134,11 @@ const textOverflow = computed<TextOverflowMode>(() => textExt.value?.overflow ??
 const textLineClamp = computed(() => textExt.value?.lineClamp ?? 0);
 const textVerticalAlign = computed(() => textExt.value?.verticalAlign ?? 'top');
 const textFieldBinding = computed(() => textExt.value?.fieldBinding ?? '');
+const textPreviewValue = computed(() => {
+  const field = textFieldBinding.value;
+  if (!field) return '';
+  return props.previewData?.[field] == null ? '' : String(props.previewData[field]);
+});
 
 const bindableFields = computed(() => {
   const custom = filterValidCustomFieldIds(props.customFields ?? []);
@@ -149,6 +157,7 @@ const imageFitMode = computed<ImageFitMode>(() => imageExt.value?.fitMode ?? 'co
 const imageBgColor = computed(() => imageExt.value?.backgroundColor ?? '#FFFFFF');
 const imageWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
 const imageHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const imagePreviewValue = computed(() => props.previewData?.imageUrl == null ? '' : String(props.previewData.imageUrl));
 const imageUploadError = ref('');
 const imageLoadError = computed(() => {
   if (imageExt.value?.loadStatus !== 'error') return '';
@@ -168,6 +177,7 @@ const priceThousandSep = computed(() => priceExt.value?.thousandSeparator ?? ','
 const priceDecimalSep = computed(() => priceExt.value?.decimalSeparator ?? '.');
 const priceWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
 const priceHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const pricePreviewValue = computed(() => props.previewData?.price == null ? '' : String(props.previewData.price));
 
 // DISCOUNT properties
 const discountExt = computed<DiscountExtension | null>(() => {
@@ -184,6 +194,7 @@ const discountTextAlign = computed(() => discountExt.value?.textAlign ?? 'center
 const discountVerticalAlign = computed(() => discountExt.value?.verticalAlign ?? 'middle');
 const discountWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
 const discountHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
+const discountPreviewValue = computed(() => props.previewData?.discount == null ? '' : String(props.previewData.discount));
 
 // QRCODE properties
 const qrcodeExt = computed<QrcodeExtension | null>(() => {
@@ -198,6 +209,7 @@ const qrcodeBgColor = computed(() => qrcodeExt.value?.backgroundColor ?? '#FFFFF
 const qrcodeWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
 const qrcodeHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
 const qrcodeWarnings = computed(() => qrcodeExt.value?.readabilityWarnings ?? []);
+const qrcodePreviewValue = computed(() => props.previewData?.qrContent == null ? '' : String(props.previewData.qrContent));
 
 // BARCODE properties
 const barcodeExt = computed<BarcodeExtension | null>(() => {
@@ -214,6 +226,34 @@ const barcodeWarnings = computed(() => barcodeExt.value?.readabilityWarnings ?? 
 
 function updateProp(key: string, value: unknown) {
   emit('update-prop', key, value);
+}
+
+const barcodePreviewValue = computed(() => props.previewData?.barcodeContent == null ? '' : String(props.previewData.barcodeContent));
+
+function updatePreviewField(field: string, value: unknown) {
+  emit('update-preview-field', field, value);
+}
+
+function paletteHex(name: string, fallback: string): string {
+  return props.palette.find((color) => color.name.toLowerCase() === name.toLowerCase())?.hex ?? fallback;
+}
+
+function applyPricePreset(kind: 'sale' | 'plain') {
+  const ext = priceExt.value;
+  if (!ext) return;
+
+  if (kind === 'sale') {
+    const red = paletteHex('red', '#CC0000');
+    updateProp('ext.currencyStyle', { ...ext.currencyStyle, fontSize: 13, fontWeight: 'normal', color: '#000000' });
+    updateProp('ext.integerStyle', { ...ext.integerStyle, fontSize: 28, fontWeight: 'bold', color: red });
+    updateProp('ext.decimalStyle', { ...ext.decimalStyle, fontSize: 15, fontWeight: 'normal', color: red, offsetY: -10 });
+    return;
+  }
+
+  const black = paletteHex('black', '#000000');
+  updateProp('ext.currencyStyle', { ...ext.currencyStyle, fontSize: 12, fontWeight: 'normal', color: black });
+  updateProp('ext.integerStyle', { ...ext.integerStyle, fontSize: 24, fontWeight: 'bold', color: black });
+  updateProp('ext.decimalStyle', { ...ext.decimalStyle, fontSize: 13, fontWeight: 'normal', color: black, offsetY: -8 });
 }
 
 function handleStaticImageFileChange(event: Event) {
@@ -396,6 +436,17 @@ function handleStaticImageFileChange(event: Event) {
         <div class="prop-hint">选择字段后，文本会使用预览数据中的对应值。</div>
       </div>
 
+      <div v-if="textFieldBinding" class="prop-group">
+        <label class="prop-label">预览数据 · {{ fieldOptionLabel(textFieldBinding) }}</label>
+        <input
+          type="text"
+          class="prop-input"
+          :value="textPreviewValue"
+          @change="updatePreviewField(textFieldBinding, ($event.target as HTMLInputElement).value)"
+        />
+        <div class="prop-hint">这里改的是预览数据，所有绑定同一字段的文本会一起刷新。</div>
+      </div>
+
       <div class="prop-group">
         <label class="prop-label">字号</label>
         <input
@@ -492,6 +543,23 @@ function handleStaticImageFileChange(event: Event) {
       <div class="prop-group">
         <label class="prop-label">数据字段</label>
         <input type="text" class="prop-input" :value="fieldOptionLabel('price')" disabled />
+      </div>
+
+      <div class="prop-group">
+        <label class="prop-label">预览价格</label>
+        <input
+          type="number"
+          step="0.01"
+          class="prop-input"
+          :value="pricePreviewValue"
+          @change="updatePreviewField('price', ($event.target as HTMLInputElement).value)"
+        />
+        <div class="prop-hint">修改测试数据会刷新所有绑定 price 的价格组件。</div>
+      </div>
+
+      <div class="quick-preset-row">
+        <button type="button" @click="applyPricePreset('sale')">醒目红色价</button>
+        <button type="button" @click="applyPricePreset('plain')">黑色常规价</button>
       </div>
 
       <div class="prop-group">
@@ -677,6 +745,17 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
+        <label class="prop-label">预览折扣</label>
+        <input
+          type="number"
+          step="0.1"
+          class="prop-input"
+          :value="discountPreviewValue"
+          @change="updatePreviewField('discount', ($event.target as HTMLInputElement).value)"
+        />
+      </div>
+
+      <div class="prop-group">
         <label class="prop-label">显示格式</label>
         <input
           type="text"
@@ -784,6 +863,17 @@ function handleStaticImageFileChange(event: Event) {
         />
       </div>
 
+      <div class="prop-group" v-if="imageSource === 'dynamic'">
+        <label class="prop-label">预览图片地址</label>
+        <input
+          type="text"
+          class="prop-input"
+          :value="imagePreviewValue"
+          placeholder="https://..."
+          @change="updatePreviewField('imageUrl', ($event.target as HTMLInputElement).value)"
+        />
+      </div>
+
       <div class="prop-group" v-if="imageSource === 'static'">
         <label class="prop-label">图片 URL / Base64</label>
         <input
@@ -866,6 +956,16 @@ function handleStaticImageFileChange(event: Event) {
       </div>
 
       <div class="prop-group">
+        <label class="prop-label">预览二维码内容</label>
+        <input
+          type="text"
+          class="prop-input"
+          :value="qrcodePreviewValue"
+          @change="updatePreviewField('qrContent', ($event.target as HTMLInputElement).value)"
+        />
+      </div>
+
+      <div class="prop-group">
         <label class="prop-label">宽度</label>
         <input
           type="number"
@@ -931,6 +1031,16 @@ function handleStaticImageFileChange(event: Event) {
       <div class="prop-group">
         <label class="prop-label">数据字段</label>
         <input type="text" class="prop-input" :value="fieldOptionLabel('barcodeContent')" disabled />
+      </div>
+
+      <div class="prop-group">
+        <label class="prop-label">预览条码内容</label>
+        <input
+          type="text"
+          class="prop-input"
+          :value="barcodePreviewValue"
+          @change="updatePreviewField('barcodeContent', ($event.target as HTMLInputElement).value)"
+        />
       </div>
 
       <div class="prop-group">
@@ -1060,6 +1170,28 @@ function handleStaticImageFileChange(event: Event) {
   color: #d8d0c3;
   padding-top: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.quick-preset-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.quick-preset-row button {
+  min-height: 30px;
+  color: #ddd5ca;
+  background: rgba(240, 211, 91, 0.1);
+  border: 1px solid rgba(240, 211, 91, 0.25);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.quick-preset-row button:hover {
+  color: #fff2ba;
+  border-color: rgba(240, 211, 91, 0.5);
 }
 
 .prop-group {

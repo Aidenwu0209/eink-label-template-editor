@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+import type { StarterTemplateKind } from '@/stores/editorStore';
+
 const props = withDefaults(defineProps<{
   canUndo?: boolean;
   canRedo?: boolean;
@@ -40,13 +43,26 @@ const emit = defineEmits<{
   'align-middle': [];
   'align-bottom': [];
   'toggle-lock': [];
+  'apply-starter-template': [kind: StarterTemplateKind];
 }>();
+
+const activeAssetTab = ref<'my' | 'public' | 'templates'>('my');
 </script>
 
 <template>
   <div class="toolbar-actions">
+    <div class="asset-tabs" aria-label="素材分类">
+      <button :class="{ active: activeAssetTab === 'my' }" @click="activeAssetTab = 'my'">我的元素</button>
+      <button :class="{ active: activeAssetTab === 'public' }" @click="activeAssetTab = 'public'">公共元素</button>
+      <button :class="{ active: activeAssetTab === 'templates' }" @click="activeAssetTab = 'templates'">固定模板</button>
+    </div>
+
     <div class="toolbar-group create-group">
-      <span class="toolbar-group-label">添加元素</span>
+      <span class="toolbar-group-label">
+        {{ activeAssetTab === 'my' ? '数据绑定组件' : activeAssetTab === 'public' ? '基础绘制组件' : '一键套用版式' }}
+      </span>
+
+      <template v-if="activeAssetTab === 'public'">
       <button class="tool-btn" title="添加矩形框" aria-label="添加矩形框" @click="emit('add-rect')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="2" y="3" width="12" height="10" stroke="currentColor" stroke-width="1.5" fill="none" />
@@ -65,6 +81,17 @@ const emit = defineEmits<{
         </svg>
         <span>文本</span>
       </button>
+      <button class="tool-btn" title="添加图片框，可在右侧上传图片或输入 URL" aria-label="添加上传图片框" @click="emit('add-static-image')">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="2" y="3" width="12" height="10" stroke="currentColor" stroke-width="1.5" fill="none" />
+          <circle cx="5.5" cy="6.5" r="1.5" fill="currentColor" />
+          <path d="M2 11 L6 7 L9 10 L11 8 L14 11 L14 13 L2 13 Z" fill="currentColor" opacity="0.4" />
+        </svg>
+        <span>上传图片</span>
+      </button>
+      </template>
+
+      <template v-else-if="activeAssetTab === 'my'">
       <button class="tool-btn" title="添加价格组件，绑定 price 字段" aria-label="添加价格组件" @click="emit('add-price')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <text x="1" y="13" font-size="13" font-weight="bold" fill="currentColor" font-family="sans-serif">¥</text>
@@ -76,14 +103,6 @@ const emit = defineEmits<{
           <text x="1" y="13" font-size="11" font-weight="bold" fill="currentColor" font-family="sans-serif">%</text>
         </svg>
         <span>折扣</span>
-      </button>
-      <button class="tool-btn" title="添加图片框，可在右侧上传图片或输入 URL" aria-label="添加上传图片框" @click="emit('add-static-image')">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <rect x="2" y="3" width="12" height="10" stroke="currentColor" stroke-width="1.5" fill="none" />
-          <circle cx="5.5" cy="6.5" r="1.5" fill="currentColor" />
-          <path d="M2 11 L6 7 L9 10 L11 8 L14 11 L14 13 L2 13 Z" fill="currentColor" opacity="0.4" />
-        </svg>
-        <span>上传图片</span>
       </button>
       <button class="tool-btn" title="添加动态图片，绑定 imageUrl 字段" aria-label="添加动态图片字段" @click="emit('add-dynamic-image')">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -120,6 +139,23 @@ const emit = defineEmits<{
         </svg>
         <span>条形码</span>
       </button>
+      </template>
+
+      <template v-else>
+      <button class="tool-btn template-btn" title="商品名称 + 价格 + 折扣 + 条码" @click="emit('apply-starter-template', 'retail')">
+        <span class="template-mark">价</span>
+        <span>零售价签模板</span>
+      </button>
+      <button class="tool-btn template-btn" title="商品名称 + 条形码 + 二维码" @click="emit('apply-starter-template', 'barcode')">
+        <span class="template-mark">码</span>
+        <span>条码追踪模板</span>
+      </button>
+      <button class="tool-btn template-btn" title="商品名称 + 二维码 + 折扣" @click="emit('apply-starter-template', 'qr')">
+        <span class="template-mark">券</span>
+        <span>扫码促销模板</span>
+      </button>
+      <p class="template-hint">套用固定模板会先清空当前画布。</p>
+      </template>
     </div>
 
     <div class="toolbar-group utility-group">
@@ -169,6 +205,34 @@ const emit = defineEmits<{
   height: 100%;
   overflow-y: auto;
   padding: 0 7px 12px;
+}
+
+.asset-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.asset-tabs button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 5px 4px;
+  color: #aaa297;
+  background: rgba(0, 0, 0, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.asset-tabs button.active,
+.asset-tabs button:hover {
+  color: #fff2ba;
+  border-color: rgba(240, 211, 91, 0.48);
+  background: rgba(240, 211, 91, 0.14);
 }
 
 .toolbar-group {
@@ -227,6 +291,30 @@ const emit = defineEmits<{
 .tool-btn svg {
   width: 18px;
   height: 18px;
+}
+
+.template-btn {
+  min-height: 48px;
+}
+
+.template-mark {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #17130a;
+  background: #f0d35b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.template-hint {
+  margin: 0;
+  color: #8f887d;
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .tool-btn:hover {

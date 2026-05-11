@@ -7,6 +7,18 @@ import PreviewCanvas from '@/components/canvas/PreviewCanvas.vue';
 import EditorToolbar from '@/components/toolbar/EditorToolbar.vue';
 import PropertiesPanel from '@/components/panel/PropertiesPanel.vue';
 import { getValidCustomFieldIdsFromPreviewData } from '@/fields';
+import type { FabricJSON } from '@/boot/types';
+
+type LocalTemplateRecord = {
+  id: string;
+  name: string;
+  createdAt: string;
+  width: number;
+  height: number;
+  data: FabricJSON;
+};
+
+const LOCAL_TEMPLATE_STORAGE_KEY = 'eink-label-template-editor.localTemplates.v1';
 
 const screenStore = useScreenStore();
 const editorStore = useEditorStore();
@@ -15,7 +27,11 @@ const fabricCanvasRef = ref<InstanceType<typeof FabricCanvas>>();
 const workspaceRef = ref<HTMLElement>();
 const workspaceSize = ref({ width: 0, height: 0 });
 const manualZoom = ref<number | null>(null);
+const previewManualZoom = ref<number | null>(null);
 const showGrid = ref(true);
+const savedTemplates = ref<LocalTemplateRecord[]>([]);
+const templateSelectValue = ref('');
+const draggedLayerId = ref<string | null>(null);
 
 const screenInfo = computed(() => {
   const p = config.screen.profile;
@@ -80,6 +96,59 @@ function updateQuickNumber(key: string, event: Event): void {
   void editorStore.updateObjectProp(key, value);
 }
 
+function loadLocalTemplates(): void {
+  try {
+    const raw = localStorage.getItem(LOCAL_TEMPLATE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    savedTemplates.value = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    savedTemplates.value = [];
+  }
+}
+
+function persistLocalTemplates(): void {
+  localStorage.setItem(LOCAL_TEMPLATE_STORAGE_KEY, JSON.stringify(savedTemplates.value.slice(0, 20)));
+}
+
+function formatTemplateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+async function saveLocalTemplate(): Promise<void> {
+  const defaultName = config.templateName || `模板 ${new Date().toLocaleString()}`;
+  const name = window.prompt('保存为我的模板', defaultName)?.trim();
+  if (!name) return;
+
+  const data = await editorStore.exportCurrentTemplate();
+  const record: LocalTemplateRecord = {
+    id: `local_${Date.now().toString(36)}`,
+    name,
+    createdAt: new Date().toISOString(),
+    width: config.canvas.width,
+    height: config.canvas.height,
+    data,
+  };
+  savedTemplates.value = [record, ...savedTemplates.value.filter((item) => item.name !== name)].slice(0, 20);
+  persistLocalTemplates();
+  saveMessage.value = { type: 'success', text: `已保存到我的模板：${name}` };
+  setTimeout(() => { saveMessage.value = null; }, 2400);
+}
+
+async function applyLocalTemplateById(event: Event): Promise<void> {
+  const id = (event.target as HTMLSelectElement).value;
+  templateSelectValue.value = '';
+  const record = savedTemplates.value.find((item) => item.id === id);
+  if (!record) return;
+  await editorStore.loadTemplate(record.data);
+}
+
+function deleteLocalTemplate(id: string): void {
+  savedTemplates.value = savedTemplates.value.filter((item) => item.id !== id);
+  persistLocalTemplates();
+}
+
 async function handleSave() {
   try {
     saveMessage.value = null;
@@ -117,6 +186,46 @@ function resetZoom() {
 function fitZoom() {
   manualZoom.value = null;
   updateWorkspaceSize();
+}
+
+function setPreviewZoom(next: number) {
+  previewManualZoom.value = Math.min(4, Math.max(0.35, Number(next.toFixed(2))));
+}
+
+function previewZoomIn() {
+  setPreviewZoom(previewScale.value + 0.25);
+}
+
+function previewZoomOut() {
+  setPreviewZoom(previewScale.value - 0.25);
+}
+
+function resetPreviewZoom() {
+  setPreviewZoom(1);
+}
+
+function fitPreviewZoom() {
+  previewManualZoom.value = null;
+}
+
+function handleLayerDragStart(layerId: string, event: DragEvent): void {
+  draggedLayerId.value = layerId;
+  event.dataTransfer?.setData('text/plain', layerId);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+  }
+}
+
+function handleLayerDrop(targetLayerId: string, event: DragEvent): void {
+  event.preventDefault();
+  const sourceId = event.dataTransfer?.getData('text/plain') || draggedLayerId.value;
+  draggedLayerId.value = null;
+  if (!sourceId || sourceId === targetLayerId) return;
+  editorStore.moveLayerTo(sourceId, targetLayerId);
+}
+
+function handleLayerDragEnd(): void {
+  draggedLayerId.value = null;
 }
 
 function isEditableKeyTarget(target: EventTarget | null): boolean {
@@ -162,6 +271,7 @@ function handleEditorKeydown(event: KeyboardEvent): void {
 
 onMounted(async () => {
   await nextTick();
+  loadLocalTemplates();
   updateWorkspaceSize();
   window.addEventListener('resize', updateWorkspaceSize);
 
@@ -203,13 +313,23 @@ const canvasTransformStyle = computed(() => ({
   transformOrigin: 'top left',
 }));
 
-const previewScale = computed(() => {
+const gridOverlayStyle = computed(() => {
+  const gridSize = Math.max(4, Math.round(10 * canvasScale.value));
+  return {
+    backgroundSize: `${gridSize}px ${gridSize}px`,
+  };
+});
+
+const previewFitScale = computed(() => {
   const maxWidth = 252;
   const maxHeight = 188;
   const scaleX = maxWidth / config.canvas.width;
   const scaleY = maxHeight / (config.canvas.height + 34);
-  return Math.min(scaleX, scaleY, 1);
+  return Math.min(scaleX, scaleY, 1.8);
 });
+
+const previewScale = computed(() => previewManualZoom.value ?? previewFitScale.value);
+const previewZoomLabel = computed(() => `${Math.round(previewScale.value * 100)}%`);
 
 const previewContainerStyle = computed(() => ({
   width: config.canvas.width * previewScale.value + 'px',
@@ -241,6 +361,22 @@ onUnmounted(() => {
       <div class="document-tabs">
         <span class="document-tab active">{{ config.templateName || '未命名模板' }}</span>
         <span class="screen-info">{{ screenInfo }}</span>
+      </div>
+      <div class="template-actions" aria-label="模板快捷切换">
+        <button class="toolbar-btn compact" title="套用零售价签固定模板" @click="editorStore.applyStarterTemplate('retail')">零售价签</button>
+        <button class="toolbar-btn compact" title="套用条码追踪固定模板" @click="editorStore.applyStarterTemplate('barcode')">条码模板</button>
+        <select
+          v-model="templateSelectValue"
+          class="template-select"
+          title="打开我的模板记录"
+          @change="applyLocalTemplateById"
+        >
+          <option value="">我的模板记录</option>
+          <option v-for="item in savedTemplates" :key="item.id" :value="item.id">
+            {{ item.name }} · {{ formatTemplateTime(item.createdAt) }}
+          </option>
+        </select>
+        <button class="toolbar-btn compact" title="保存当前画布到本机模板记录" @click="saveLocalTemplate">存为模板</button>
       </div>
       <div class="toolbar-right">
         <div class="zoom-controls" aria-label="画布缩放控制">
@@ -298,6 +434,7 @@ onUnmounted(() => {
           @align-middle="editorStore.alignSelectedVertical('middle')"
           @align-bottom="editorStore.alignSelectedVertical('bottom')"
           @toggle-lock="editorStore.toggleLockSelected()"
+          @apply-starter-template="editorStore.applyStarterTemplate"
         />
       </aside>
 
@@ -355,6 +492,12 @@ onUnmounted(() => {
                   :height="config.canvas.height"
                 />
               </div>
+              <div
+                v-if="showGrid"
+                class="canvas-grid-overlay"
+                :style="gridOverlayStyle"
+                aria-hidden="true"
+              ></div>
             </div>
           </div>
         </div>
@@ -364,7 +507,13 @@ onUnmounted(() => {
         <section class="dock-panel preview-dock">
           <div class="dock-title-row">
             <span>电子墨水屏预览</span>
-            <span class="dock-kicker">实时预览</span>
+            <div class="preview-controls" aria-label="预览缩放控制">
+              <button title="缩小预览" @click="previewZoomOut">−</button>
+              <span>{{ previewZoomLabel }}</span>
+              <button title="放大预览" @click="previewZoomIn">+</button>
+              <button title="预览 100%" @click="resetPreviewZoom">100%</button>
+              <button title="适应预览区域" @click="fitPreviewZoom">适应</button>
+            </div>
           </div>
           <div class="preview-stage">
             <div class="preview-scaled" :style="previewContainerStyle">
@@ -382,7 +531,9 @@ onUnmounted(() => {
           :selected-object="editorStore.selectedObject"
           :palette="palette"
           :custom-fields="customFields"
+          :preview-data="config.previewData"
           @update-prop="editorStore.updateObjectProp"
+          @update-preview-field="editorStore.updatePreviewDataField"
         />
 
         <section class="dock-panel layer-dock">
@@ -394,14 +545,33 @@ onUnmounted(() => {
             <button
               v-for="layer in editorStore.layerEntries"
               :key="layer.id"
-              :class="['layer-row', { active: layer.selected }]"
+              :class="['layer-row', { active: layer.selected, dragging: draggedLayerId === layer.id }]"
               :title="`选择 ${layer.label}`"
+              draggable="true"
+              @dragstart="handleLayerDragStart(layer.id, $event)"
+              @dragover.prevent
+              @drop="handleLayerDrop(layer.id, $event)"
+              @dragend="handleLayerDragEnd"
               @click="editorStore.selectObjectById(layer.id)"
             >
               <span class="layer-icon">{{ layer.locked ? '锁' : layer.type.slice(0, 1) }}</span>
               <span class="layer-name">{{ layer.label }}</span>
               <span class="layer-index">#{{ layer.index + 1 }}</span>
             </button>
+            <div v-if="savedTemplates.length" class="template-records">
+              <div class="template-record-title">我的模板</div>
+              <button
+                v-for="item in savedTemplates.slice(0, 3)"
+                :key="item.id"
+                class="template-record"
+                :title="`载入 ${item.name}`"
+                @click="editorStore.loadTemplate(item.data)"
+              >
+                <span>{{ item.name }}</span>
+                <small>{{ formatTemplateTime(item.createdAt) }}</small>
+                <b title="删除记录" @click.stop="deleteLocalTemplate(item.id)">×</b>
+              </button>
+            </div>
             <div v-if="!editorStore.layerEntries.length" class="layer-empty">暂无元素</div>
           </div>
         </section>
@@ -453,7 +623,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 58px;
+  height: 66px;
   padding: 0 18px 0 14px;
   background: linear-gradient(180deg, rgba(46, 48, 49, 0.98), rgba(28, 30, 31, 0.98));
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -465,7 +635,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 238px;
+  min-width: 220px;
 }
 
 .app-badge {
@@ -504,7 +674,7 @@ onUnmounted(() => {
   gap: 8px;
   min-width: 0;
   flex: 1 1 auto;
-  margin: 0 18px;
+  margin: 0 10px;
 }
 
 .document-tab {
@@ -527,6 +697,29 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
+}
+
+.template-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.template-select {
+  max-width: 150px;
+  height: 28px;
+  color: #e8e1d6;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .zoom-controls {
@@ -781,6 +974,7 @@ onUnmounted(() => {
 }
 
 .canvas-container {
+  position: relative;
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.76);
   border-radius: 6px;
@@ -788,11 +982,18 @@ onUnmounted(() => {
 }
 
 .canvas-container.show-grid {
-  background-color: #181818;
+  background-color: #151515;
+}
+
+.canvas-grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
   background-image:
-    linear-gradient(rgba(240, 211, 91, 0.11) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(240, 211, 91, 0.11) 1px, transparent 1px);
-  background-size: 10px 10px;
+    linear-gradient(rgba(31, 111, 235, 0.24) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(31, 111, 235, 0.24) 1px, transparent 1px);
+  box-shadow: inset 0 0 0 1px rgba(31, 111, 235, 0.32);
 }
 
 .inspector-dock {
@@ -832,11 +1033,39 @@ onUnmounted(() => {
   font-weight: 650;
 }
 
+.preview-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.preview-controls button {
+  height: 24px;
+  min-width: 24px;
+  padding: 0 6px;
+  color: #d8d0c3;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.preview-controls span {
+  min-width: 36px;
+  color: #a59e94;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
 .preview-stage {
   display: flex;
   justify-content: center;
   padding: 14px 12px 16px;
-  overflow: hidden;
+  max-height: 250px;
+  overflow: auto;
 }
 
 .preview-scaled {
@@ -885,6 +1114,11 @@ onUnmounted(() => {
   background: rgba(240, 211, 91, 0.12);
 }
 
+.layer-row.dragging {
+  opacity: 0.42;
+  border-style: dashed;
+}
+
 .layer-icon {
   width: 24px;
   height: 24px;
@@ -918,6 +1152,61 @@ onUnmounted(() => {
   color: #8d867d;
   text-align: center;
   font-size: 12px;
+}
+
+.template-records {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.template-record-title {
+  color: #8f887d;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.template-record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  color: #d8d0c3;
+  background: rgba(0, 0, 0, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.template-record span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.template-record small {
+  color: #8c857b;
+  font-size: 10px;
+}
+
+.template-record b {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: #cfc6ba;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .palette-strip {

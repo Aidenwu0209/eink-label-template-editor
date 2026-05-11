@@ -142,7 +142,7 @@ onUnmounted(() => {
 
 .preview-canvas {
   display: block;
-  image-rendering: pixelated;
+  image-rendering: auto;
 }
 
 @keyframes pulse {
