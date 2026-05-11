@@ -2,13 +2,13 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useScreenStore } from '@/stores/screenStore';
-import { useEditorStore, type SnippetKind, type ToolKind } from '@/stores/editorStore';
+import { useEditorStore, type ScreenColorMode, type SnippetKind, type ToolKind } from '@/stores/editorStore';
 import FabricCanvas from '@/components/canvas/FabricCanvas.vue';
 import PreviewCanvas from '@/components/canvas/PreviewCanvas.vue';
 import EditorToolbar from '@/components/toolbar/EditorToolbar.vue';
 import PropertiesPanel from '@/components/panel/PropertiesPanel.vue';
 import SmartImportDialog from '@/components/ocr/SmartImportDialog.vue';
-import { getValidCustomFieldIdsFromPreviewData } from '@/fields';
+import { getValidCustomFieldIdsFromPreviewData, validateCustomFieldId } from '@/fields';
 import type { FabricJSON } from '@/boot/types';
 import type { RecognizedPriceTag } from '@/ocr/types';
 import type { SmartTemplateKind } from '@/ocr/templatePlanner';
@@ -55,6 +55,12 @@ const CANVAS_SIZE_PRESETS = [
   { label: '400×300', width: 400, height: 300 },
   { label: '800×480', width: 800, height: 480 },
 ] as const;
+const SCREEN_COLOR_MODES: Array<{ value: ScreenColorMode; labelKey: string }> = [
+  { value: 'BW', labelKey: 'editor.screenColorBW' },
+  { value: 'BWR', labelKey: 'editor.screenColorBWR' },
+  { value: 'BWRY', labelKey: 'editor.screenColorBWRY' },
+  { value: 'E6', labelKey: 'editor.screenColorE6' },
+];
 
 const screenStore = useScreenStore();
 const editorStore = useEditorStore();
@@ -75,6 +81,14 @@ const showGrid = ref(true);
 const savedTemplates = ref<LocalTemplateRecord[]>([]);
 const recentTools = ref<ToolKind[]>([]);
 const templateSelectValue = ref('');
+const canvasDraftWidth = ref(String(config.canvas.width));
+const canvasDraftHeight = ref(String(config.canvas.height));
+const customDataDialogOpen = ref(false);
+const customDataFieldId = ref('');
+const customDataLabel = ref('');
+const customDataSampleValue = ref('');
+const customDataError = ref('');
+const customDataPosition = ref<{ left: number; top: number } | undefined>();
 const draggedLayerId = ref<string | null>(null);
 const inspectorTab = ref<InspectorTab>('properties');
 const keepLayerTabOnNextSelection = ref(false);
@@ -101,6 +115,13 @@ const isCurrentCanvasSizePreset = computed(() => {
     preset.width === config.canvas.width
     && preset.height === config.canvas.height
   ));
+});
+const canvasPresetValue = computed(() => isCurrentCanvasSizePreset.value ? canvasSizeValue.value : '');
+const screenColorMode = computed<ScreenColorMode>(() => {
+  if (config.screen.type === 'tri') return 'BWR';
+  if (config.screen.type === 'bwry') return 'BWRY';
+  if (config.screen.type === 'six') return 'E6';
+  return 'BW';
 });
 const marketSummaryItems = computed(() => {
   const profile = activeMarketProfile.value;
@@ -144,6 +165,7 @@ const TOOL_MARKS: Record<ToolKind, string> = {
   RECT: '□',
   LINE: '/',
   TEXT: 'T',
+  CUSTOM_DATA_TEXT: '{}',
   PRICE: '',
   DISCOUNT: '%',
   IMAGE_STATIC: 'IMG',
@@ -304,13 +326,24 @@ function dismissOnboarding(): void {
   showOnboarding.value = false;
 }
 
-function parseCanvasSizeInput(value: string): { width: number; height: number } | null {
-  const match = value.trim().match(/^(\d{2,4})\s*[x×,，\s]\s*(\d{2,4})$/i);
-  if (!match) return null;
-  const width = Number(match[1]);
-  const height = Number(match[2]);
+watch(canvasSizeValue, () => {
+  canvasDraftWidth.value = String(config.canvas.width);
+  canvasDraftHeight.value = String(config.canvas.height);
+});
+
+function showTransientError(message: string, timeout = 2600): void {
+  saveMessage.value = { type: 'error', text: message };
+  setTimeout(() => { saveMessage.value = null; }, timeout);
+}
+
+function readCanvasDraftSize(): { width: number; height: number } | null {
+  const width = Number(canvasDraftWidth.value);
+  const height = Number(canvasDraftHeight.value);
   if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
-  return { width, height };
+  const roundedWidth = Math.round(width);
+  const roundedHeight = Math.round(height);
+  if (roundedWidth < 16 || roundedHeight < 16 || roundedWidth > 4096 || roundedHeight > 4096) return null;
+  return { width: roundedWidth, height: roundedHeight };
 }
 
 async function applyCanvasSize(width: number, height: number): Promise<void> {
@@ -322,27 +355,38 @@ async function applyCanvasSize(width: number, height: number): Promise<void> {
   handleWindowResize();
 }
 
-async function handleCanvasSizeChange(event: Event): Promise<void> {
+async function handleCanvasPresetChange(event: Event): Promise<void> {
   const select = event.target as HTMLSelectElement;
   const value = select.value;
-  select.value = canvasSizeValue.value;
+  select.value = canvasPresetValue.value;
   if (!value) return;
 
-  if (value === 'custom') {
-    const raw = window.prompt(t('editor.customCanvasPrompt'), `${config.canvas.width}x${config.canvas.height}`);
-    if (!raw) return;
-    const parsed = parseCanvasSizeInput(raw);
-    if (!parsed) {
-      saveMessage.value = { type: 'error', text: t('editor.customCanvasInvalid') };
-      setTimeout(() => { saveMessage.value = null; }, 2600);
-      return;
-    }
-    await applyCanvasSize(parsed.width, parsed.height);
+  const preset = CANVAS_SIZE_PRESETS.find((item) => `${item.width}x${item.height}` === value);
+  if (!preset) return;
+  canvasDraftWidth.value = String(preset.width);
+  canvasDraftHeight.value = String(preset.height);
+  await applyCanvasSize(preset.width, preset.height);
+}
+
+async function applyCanvasDraftSize(): Promise<void> {
+  const parsed = readCanvasDraftSize();
+  if (!parsed) {
+    showTransientError(t('editor.customCanvasInvalid'));
     return;
   }
+  await applyCanvasSize(parsed.width, parsed.height);
+}
 
-  const parsed = parseCanvasSizeInput(value);
-  if (parsed) await applyCanvasSize(parsed.width, parsed.height);
+async function handleScreenColorModeChange(event: Event): Promise<void> {
+  const select = event.target as HTMLSelectElement;
+  const value = select.value as ScreenColorMode;
+  select.value = screenColorMode.value;
+  await editorStore.changeScreenColorMode(value);
+  manualZoom.value = null;
+  previewManualZoom.value = null;
+  fullscreenPreviewManualZoom.value = null;
+  await nextTick();
+  handleWindowResize();
 }
 
 async function saveLocalTemplate(): Promise<void> {
@@ -378,7 +422,59 @@ function deleteLocalTemplate(id: string): void {
   persistLocalTemplates();
 }
 
+function nextCustomFieldId(): string {
+  const existing = new Set(Object.keys(config.previewData ?? {}));
+  for (let i = 1; i < 1000; i++) {
+    const candidate = `customField${i}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+  return `customField${Date.now().toString(36)}`;
+}
+
+function openCustomDataDialog(position?: { left: number; top: number }): void {
+  customDataPosition.value = position;
+  customDataFieldId.value = nextCustomFieldId();
+  customDataLabel.value = '';
+  customDataSampleValue.value = t('toolbar.customData.defaultSample');
+  customDataError.value = '';
+  customDataDialogOpen.value = true;
+}
+
+function closeCustomDataDialog(): void {
+  customDataDialogOpen.value = false;
+  customDataError.value = '';
+  customDataPosition.value = undefined;
+}
+
+async function submitCustomDataDialog(): Promise<void> {
+  const fieldId = customDataFieldId.value.trim();
+  const errors = validateCustomFieldId(fieldId);
+  if (errors.length > 0) {
+    customDataError.value = errors[0].message;
+    return;
+  }
+
+  try {
+    editorStore.addCustomDataText({
+      fieldId,
+      label: customDataLabel.value.trim(),
+      sampleValue: customDataSampleValue.value,
+      position: customDataPosition.value,
+    });
+    rememberTool('CUSTOM_DATA_TEXT');
+    closeCustomDataDialog();
+    isToolboxPeekOpen.value = false;
+    await nextTick();
+  } catch (err: any) {
+    customDataError.value = err?.message ?? t('editor.unknownError');
+  }
+}
+
 async function handleAddTool(kind: ToolKind): Promise<void> {
+  if (kind === 'CUSTOM_DATA_TEXT') {
+    openCustomDataDialog();
+    return;
+  }
   await editorStore.addElement(kind);
   rememberTool(kind);
   isToolboxPeekOpen.value = false;
@@ -469,6 +565,10 @@ async function handleStageDrop(event: DragEvent): Promise<void> {
   isToolDropTarget.value = false;
   const position = getCanvasDropPosition(event) ?? undefined;
   if (item.type === 'tool') {
+    if (item.kind === 'CUSTOM_DATA_TEXT') {
+      openCustomDataDialog(position);
+      return;
+    }
     await editorStore.addElement(item.kind, position);
     rememberTool(item.kind);
   } else {
@@ -851,10 +951,11 @@ onUnmounted(() => {
         <button class="toolbar-btn smart-import" :title="t('editor.smartImportTitle')" @click="showSmartImportDialog = true">{{ t('editor.smartImport') }}</button>
         <select
           class="canvas-size-select"
-          :value="canvasSizeValue"
+          :value="canvasPresetValue"
           :title="t('editor.canvasResizeTitle')"
-          @change="handleCanvasSizeChange"
+          @change="handleCanvasPresetChange"
         >
+          <option value="">{{ t('editor.canvasPreset') }}</option>
           <option
             v-if="!isCurrentCanvasSizePreset"
             :value="canvasSizeValue"
@@ -868,7 +969,28 @@ onUnmounted(() => {
           >
             {{ preset.label }}
           </option>
-          <option value="custom">{{ t('editor.customCanvasSize') }}</option>
+        </select>
+        <div class="canvas-dimension-controls" :aria-label="t('editor.customCanvasSize')">
+          <label>
+            <span>{{ t('editor.canvasWidth') }}</span>
+            <input v-model="canvasDraftWidth" type="number" min="16" max="4096" step="1" inputmode="numeric" />
+          </label>
+          <span class="dimension-separator">×</span>
+          <label>
+            <span>{{ t('editor.canvasHeight') }}</span>
+            <input v-model="canvasDraftHeight" type="number" min="16" max="4096" step="1" inputmode="numeric" />
+          </label>
+          <button class="toolbar-btn compact" type="button" :title="t('editor.applyCanvasSize')" @click="applyCanvasDraftSize">{{ t('common.apply') }}</button>
+        </div>
+        <select
+          class="screen-color-select"
+          :value="screenColorMode"
+          :title="t('editor.screenColorTitle')"
+          @change="handleScreenColorModeChange"
+        >
+          <option v-for="mode in SCREEN_COLOR_MODES" :key="mode.value" :value="mode.value">
+            {{ t(mode.labelKey) }}
+          </option>
         </select>
         <select
           v-model="templateSelectValue"
@@ -1214,6 +1336,44 @@ onUnmounted(() => {
 
     <Teleport to="body">
       <div
+        v-if="customDataDialogOpen"
+        class="custom-data-overlay"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('toolbar.customData.dialogTitle')"
+        @click.self="closeCustomDataDialog"
+      >
+        <form class="custom-data-dialog" @submit.prevent="submitCustomDataDialog">
+          <div class="custom-data-dialog-header">
+            <div>
+              <span>{{ t('toolbar.customData.dialogTitle') }}</span>
+              <small>{{ t('toolbar.customData.dialogHint') }}</small>
+            </div>
+            <button type="button" @click="closeCustomDataDialog">{{ t('common.close') }}</button>
+          </div>
+          <label class="custom-data-field">
+            <span>{{ t('toolbar.customData.fieldId') }}</span>
+            <input v-model.trim="customDataFieldId" required autocomplete="off" placeholder="skuName" />
+          </label>
+          <label class="custom-data-field">
+            <span>{{ t('toolbar.customData.label') }}</span>
+            <input v-model="customDataLabel" autocomplete="off" :placeholder="t('toolbar.customData.labelPlaceholder')" />
+          </label>
+          <label class="custom-data-field">
+            <span>{{ t('toolbar.customData.sampleValue') }}</span>
+            <textarea v-model="customDataSampleValue" rows="3" :placeholder="t('toolbar.customData.samplePlaceholder')"></textarea>
+          </label>
+          <p v-if="customDataError" class="custom-data-error">{{ customDataError }}</p>
+          <div class="custom-data-actions">
+            <button type="button" @click="closeCustomDataDialog">{{ t('common.cancel') }}</button>
+            <button type="submit">{{ t('toolbar.customData.create') }}</button>
+          </div>
+        </form>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
         v-if="isPreviewOverlayOpen"
         class="preview-overlay"
         role="dialog"
@@ -1375,7 +1535,7 @@ onUnmounted(() => {
   gap: 5px;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: min(28vw, 430px);
+  max-width: min(46vw, 720px);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -1386,7 +1546,8 @@ onUnmounted(() => {
 }
 
 .template-select,
-.canvas-size-select {
+.canvas-size-select,
+.screen-color-select {
   max-width: 128px;
   height: 30px;
   color: var(--text-main);
@@ -1398,7 +1559,55 @@ onUnmounted(() => {
 }
 
 .canvas-size-select {
-  width: 104px;
+  width: 96px;
+}
+
+.screen-color-select {
+  width: 116px;
+}
+
+.canvas-dimension-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding-left: 3px;
+  border-left: 1px solid var(--line-faint);
+}
+
+.canvas-dimension-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.canvas-dimension-controls input {
+  width: 58px;
+  height: 30px;
+  padding: 0 6px;
+  color: var(--text-strong);
+  background: rgba(8, 9, 11, 0.62);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.canvas-dimension-controls input:focus,
+.screen-color-select:focus,
+.canvas-size-select:focus {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring);
+}
+
+.dimension-separator {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .regional-controls {
@@ -2395,6 +2604,109 @@ onUnmounted(() => {
   color: var(--danger);
 }
 
+.custom-data-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 5, 7, 0.72);
+  backdrop-filter: blur(14px);
+}
+
+.custom-data-dialog {
+  width: min(430px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  color: var(--text-main);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(216, 183, 96, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(40, 42, 48, 0.98), rgba(17, 18, 22, 0.98));
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  box-shadow: var(--shadow-float);
+}
+
+.custom-data-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.custom-data-dialog-header span {
+  display: block;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 850;
+}
+
+.custom-data-dialog-header small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.custom-data-dialog button {
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+}
+
+.custom-data-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.custom-data-field input,
+.custom-data-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--text-strong);
+  background: rgba(8, 9, 11, 0.62);
+  border: 1px solid var(--line-soft);
+  border-radius: 11px;
+  padding: 10px 11px;
+  font: inherit;
+  font-weight: 650;
+}
+
+.custom-data-field textarea {
+  resize: vertical;
+  min-height: 76px;
+}
+
+.custom-data-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.custom-data-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.custom-data-actions button[type='submit'] {
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent-strong), var(--accent));
+  border-color: rgba(241, 217, 137, 0.76);
+  font-weight: 850;
+}
+
 .preview-overlay {
   position: fixed;
   inset: 0;
@@ -2512,7 +2824,7 @@ onUnmounted(() => {
   }
 
   .template-actions {
-    max-width: 30vw;
+    max-width: 44vw;
   }
 
   .regional-controls {
@@ -2547,7 +2859,7 @@ onUnmounted(() => {
   }
 
   .template-actions {
-    max-width: 36vw;
+    max-width: 52vw;
   }
 
   .regional-controls {

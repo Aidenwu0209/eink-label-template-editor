@@ -35,6 +35,10 @@ export class EinkColorPlugin extends BasePlugin {
     return [...this.profile.palette];
   }
 
+  setProfile(profile: ScreenProfile): void {
+    this.profile = profile;
+  }
+
   snapColorToPalette(hex: string): string {
     if (isTransparentPaint(hex)) return hex;
     const rgb = hexToRgb(hex);

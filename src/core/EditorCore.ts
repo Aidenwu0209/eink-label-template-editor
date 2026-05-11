@@ -84,6 +84,8 @@ export class EditorCore {
       fireRightClick: true,
       renderOnAddRemove: false,
       skipOffscreen: true,
+      enableRetinaScaling: true,
+      imageSmoothingEnabled: true,
     });
 
     // Create workspace rect (defines export area)

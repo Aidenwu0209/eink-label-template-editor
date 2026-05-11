@@ -22,6 +22,11 @@ export class EinkRenderer {
     return this.strategy.name;
   }
 
+  setProfile(profile: ScreenProfile): void {
+    this.profile = profile;
+    this.strategy = EinkRenderer.createStrategy(profile.dithering.algorithm);
+  }
+
   /** Full render: preview ImageData + device buffer */
   render(source: ImageData): RenderResult {
     const start = performance.now();

@@ -6,9 +6,11 @@ import { EinkColorPlugin } from '@/plugins/eink/EinkColorPlugin';
 import { EinkRenderPlugin } from '@/plugins/eink/EinkRenderPlugin';
 import { EinkExportPlugin } from '@/plugins/eink/EinkExportPlugin';
 import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData } from '@/boot/types';
-import type { ColorEntry } from '@/screen/types';
+import { ScreenType, type ColorEntry, type ScreenProfile } from '@/screen/types';
+import { SCREEN_PROFILES } from '@/screen/profiles';
+import { findNearestColor, hexToRgb } from '@/renderer/colorUtils';
 import { buildSavePayload, type SavePayload } from '@/export/SavePayloadBuilder';
-import { PRICE_BINDABLE_FIELDS, type PriceBindableField } from '@/fields/constants';
+import { PRICE_BINDABLE_FIELDS, validateCustomFieldId, type PriceBindableField } from '@/fields/constants';
 import { DEFAULT_EDITOR_FONT_FAMILY, resolveEditorFontFamily, resolveEditorFontWeight, type EditorFontWeight } from '@/fonts';
 import type { RecognizedPriceTag } from '@/ocr/types';
 import {
@@ -219,10 +221,12 @@ type HorizontalAlignment = 'left' | 'center' | 'right';
 type VerticalAlignment = 'top' | 'middle' | 'bottom';
 type LayerMove = 'forward' | 'backward' | 'front' | 'back';
 export type StarterTemplateKind = 'retail' | 'barcode' | 'qr';
+export type ScreenColorMode = 'BW' | 'BWR' | 'BWRY' | 'E6';
 export type ToolKind =
   | 'RECT'
   | 'LINE'
   | 'TEXT'
+  | 'CUSTOM_DATA_TEXT'
   | 'PRICE'
   | 'DISCOUNT'
   | 'IMAGE_STATIC'
@@ -249,6 +253,10 @@ interface HistoryState {
   canvas: {
     width: number;
     height: number;
+  };
+  screen: {
+    type: ScreenType;
+    profile: ScreenProfile;
   };
   previewData: PreviewData;
   objects: FabricObjectJSON[];
@@ -304,6 +312,18 @@ type PresetElementType =
 
 const PRESET_CANVAS_WIDTH = 296;
 const PRESET_CANVAS_HEIGHT = 128;
+const COLOR_MODE_TO_SCREEN_TYPE: Record<ScreenColorMode, ScreenType> = {
+  BW: ScreenType.BW,
+  BWR: ScreenType.TRI,
+  BWRY: ScreenType.BWRY,
+  E6: ScreenType.SIX,
+};
+const SCREEN_TYPE_TO_COLOR_MODE: Record<ScreenType, ScreenColorMode> = {
+  [ScreenType.BW]: 'BW',
+  [ScreenType.TRI]: 'BWR',
+  [ScreenType.BWRY]: 'BWRY',
+  [ScreenType.SIX]: 'E6',
+};
 
 function clampNumber(value: number, min: number, max: number): number {
   if (max < min) return min;
@@ -352,6 +372,59 @@ function fitBoundsToCanvas(config: BootConfig, bounds: VisualBounds): VisualBoun
 function getNamedPaletteColor(config: BootConfig, colorName: string): string | null {
   const target = colorName.toLowerCase();
   return config.screen.profile.palette.find((color) => color.name.toLowerCase() === target)?.hex ?? null;
+}
+
+function screenTypeToColorMode(type: ScreenType): ScreenColorMode {
+  return SCREEN_TYPE_TO_COLOR_MODE[type] ?? 'BW';
+}
+
+function buildRuntimeProfile(colorMode: ScreenColorMode, width: number, height: number): ScreenProfile {
+  const base = SCREEN_PROFILES[COLOR_MODE_TO_SCREEN_TYPE[colorMode]];
+  return {
+    ...base,
+    palette: base.palette.map((color) => ({ ...color })),
+    defaultWidth: width,
+    defaultHeight: height,
+  };
+}
+
+function profileToPayloadPalette(profile: ScreenProfile): Array<{ name: string; value: string }> {
+  return profile.palette.map((color) => ({ name: color.name, value: color.hex }));
+}
+
+function isTransparentPaint(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const normalized = value.replace(/\s+/g, '').toLowerCase();
+  if (normalized === 'transparent') return true;
+  const rgbaMatch = normalized.match(/^rgba\([^,]+,[^,]+,[^,]+,([^)]+)\)$/);
+  return rgbaMatch ? Number(rgbaMatch[1]) === 0 : false;
+}
+
+function remapPaintToPalette(value: unknown, palette: readonly ColorEntry[]): unknown {
+  if (typeof value !== 'string' || isTransparentPaint(value)) return value;
+  if (!/^#[0-9a-f]{6}$/i.test(value)) return value;
+  const rgb = hexToRgb(value);
+  if (rgb.some((channel) => Number.isNaN(channel))) return value;
+  return findNearestColor(rgb[0], rgb[1], rgb[2], palette).entry.hex;
+}
+
+function remapExtensionColors(ext: Record<string, any> | undefined, palette: readonly ColorEntry[]): void {
+  if (!ext) return;
+
+  for (const key of ['backgroundColor', 'foregroundColor', 'textColor', 'borderColor', 'color']) {
+    if (typeof ext[key] === 'string') {
+      ext[key] = remapPaintToPalette(ext[key], palette);
+    }
+  }
+
+  for (const key of ['currencyStyle', 'integerStyle', 'decimalStyle']) {
+    if (ext[key]?.color) {
+      ext[key] = {
+        ...ext[key],
+        color: remapPaintToPalette(ext[key].color, palette),
+      };
+    }
+  }
 }
 
 export const useEditorStore = defineStore('editor', () => {
@@ -539,6 +612,9 @@ export const useEditorStore = defineStore('editor', () => {
       cornerColor: '#f5d74f',
       cornerStrokeColor: '#1f6feb',
       borderColor: '#82b1ff',
+      cornerSize: 8,
+      touchCornerSize: 18,
+      borderScaleFactor: 1,
       padding: 2,
     } as any);
 
@@ -645,6 +721,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   function getPresetTypeForTool(kind: ToolKind): PresetElementType {
     if (kind === 'IMAGE_STATIC' || kind === 'IMAGE_DYNAMIC') return 'IMAGE';
+    if (kind === 'CUSTOM_DATA_TEXT') return 'TEXT';
     return kind;
   }
 
@@ -722,6 +799,86 @@ export const useEditorStore = defineStore('editor', () => {
     core.bootConfig.market = market;
     core.bootConfig.marketProfile = getMarketProfile(market);
     selectionVersion.value++;
+  }
+
+  function applyRuntimeScreenProfile(core: EditorCore, type: ScreenType, profile: ScreenProfile): void {
+    core.bootConfig.screen.type = type;
+    core.bootConfig.screen.profile = profile;
+    core.bootConfig.screen.palette = profile.palette;
+    if (core.bootConfig.sourceProfile) {
+      core.bootConfig.sourceProfile.colorMode = screenTypeToColorMode(type);
+      core.bootConfig.sourceProfile.palette = profileToPayloadPalette(profile);
+      core.bootConfig.sourceProfile.width = core.bootConfig.canvas.width;
+      core.bootConfig.sourceProfile.height = core.bootConfig.canvas.height;
+    }
+
+    core.fabricCanvas.backgroundColor = profile.defaultBackground;
+    core.getPlugin<EinkColorPlugin>('EinkColorPlugin')?.setProfile(profile);
+    core.getPlugin<EinkRenderPlugin>('EinkRenderPlugin')?.setProfile(profile);
+    core.getPlugin<EinkExportPlugin>('EinkExportPlugin')?.setProfile(profile);
+  }
+
+  function remapObjectPaints(obj: fabric.Object, palette: readonly ColorEntry[]): void {
+    const fill = remapPaintToPalette(obj.fill, palette);
+    const stroke = remapPaintToPalette(obj.stroke, palette);
+    if (fill !== obj.fill) obj.set('fill' as any, fill as any);
+    if (stroke !== obj.stroke) obj.set('stroke' as any, stroke as any);
+
+    if (obj instanceof fabric.Group) {
+      obj.getObjects().forEach((child) => remapObjectPaints(child, palette));
+    }
+  }
+
+  async function changeScreenColorMode(colorMode: ScreenColorMode): Promise<void> {
+    const core = editor.value;
+    if (!core) return;
+
+    const nextType = COLOR_MODE_TO_SCREEN_TYPE[colorMode];
+    const nextProfile = buildRuntimeProfile(colorMode, core.bootConfig.canvas.width, core.bootConfig.canvas.height);
+    if (
+      core.bootConfig.screen.type === nextType
+      && core.bootConfig.screen.profile.palette.length === nextProfile.palette.length
+    ) {
+      return;
+    }
+
+    const selectedIds = getActiveDrawableObjects(core)
+      .map(ensureObjectId)
+      .filter((id): id is string => Boolean(id));
+
+    historySuppression++;
+    try {
+      applyRuntimeScreenProfile(core, nextType, nextProfile);
+      ensureWorkspace(core);
+
+      const objects = getCanvasDrawableObjects(core);
+      for (const obj of objects) {
+        remapObjectPaints(obj, nextProfile.palette);
+        remapExtensionColors((obj as any).extension, nextProfile.palette);
+        const type = (obj as any).extensionType as string | undefined;
+        if (isCompositeVisualType(type)) {
+          await refreshExtendedObject(obj);
+        } else {
+          prepareEditableObject(obj);
+          obj.setCoords();
+        }
+      }
+
+      ensureWorkspace(core);
+      const objectsById = new Map(
+        getCanvasDrawableObjects(core).map((obj) => [(obj as any).id, obj] as const)
+      );
+      selectObjects(
+        core,
+        selectedIds.map((id) => objectsById.get(id)).filter((obj): obj is fabric.Object => Boolean(obj))
+      );
+      core.fabricCanvas.requestRenderAll();
+    } finally {
+      historySuppression--;
+    }
+
+    selectionVersion.value++;
+    commitHistory();
   }
 
   function normalizeQrcodeExtension(ext: Partial<QrcodeExtension> | undefined): QrcodeExtension {
@@ -837,6 +994,7 @@ function historySignature(state: HistoryState): string {
   return JSON.stringify({
     background: state.background ?? null,
     canvas: state.canvas,
+    screen: state.screen,
     previewData: state.previewData,
     objects: state.objects,
   });
@@ -858,6 +1016,10 @@ function historySignature(state: HistoryState): string {
       canvas: {
         width: core.bootConfig.canvas.width,
         height: core.bootConfig.canvas.height,
+      },
+      screen: {
+        type: core.bootConfig.screen.type,
+        profile: cloneJson(core.bootConfig.screen.profile),
       },
       previewData: cloneJson((core.bootConfig.previewData ?? {}) as PreviewData),
       objects,
@@ -1052,6 +1214,9 @@ function historySignature(state: HistoryState): string {
         || core.bootConfig.canvas.height !== state.canvas.height
       ) {
         core.resizeCanvas(state.canvas.width, state.canvas.height);
+      }
+      if (state.screen) {
+        applyRuntimeScreenProfile(core, state.screen.type, cloneJson(state.screen.profile));
       }
       const json = {
         version: state.version,
@@ -1321,6 +1486,51 @@ function historySignature(state: HistoryState): string {
       fieldBinding: null,
       overflow: 'ellipsis' as TextOverflowMode,
       lineClamp: 0,
+      verticalAlign: 'top' as const,
+    };
+
+    addVisualObject(text);
+  }
+
+  function addCustomDataText(options: {
+    fieldId: string;
+    label?: string;
+    sampleValue: string;
+    position?: ToolPosition;
+  }): void {
+    const core = editor.value;
+    if (!core) return;
+
+    const fieldId = options.fieldId.trim();
+    const errors = validateCustomFieldId(fieldId);
+    if (errors.length > 0) {
+      throw new Error(errors[0].message);
+    }
+
+    const previewData = (core.bootConfig.previewData ??= {} as PreviewData);
+    previewData[fieldId] = options.sampleValue;
+
+    const bounds = getToolBounds(core, 'CUSTOM_DATA_TEXT', options.position);
+    const textValue = options.sampleValue || options.label || fieldId;
+    const text = new fabric.Textbox(textValue, {
+      left: bounds.left,
+      top: bounds.top,
+      originX: 'left',
+      originY: 'top',
+      width: bounds.width,
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
+      fontSize: Math.max(10, scaledPresetValue(core.bootConfig, 14)),
+      fontWeight: resolveEditorFontWeight('normal'),
+      fill: '#000000',
+      textAlign: 'left',
+      lineHeight: 1.2,
+      editable: true,
+    });
+    (text as any).extensionType = 'TEXT';
+    (text as any).extension = {
+      fieldBinding: fieldId,
+      overflow: 'ellipsis' as TextOverflowMode,
+      lineClamp: 1,
       verticalAlign: 'top' as const,
     };
 
@@ -1762,7 +1972,7 @@ function historySignature(state: HistoryState): string {
       await addDynamicImage(position);
     } else if (kind === 'QRCODE') {
       addQrcode(position);
-    } else {
+    } else if (kind === 'BARCODE') {
       addBarcode(position);
     }
   }
@@ -2619,6 +2829,7 @@ function historySignature(state: HistoryState): string {
     addRect,
     addLine,
     addText,
+    addCustomDataText,
     addPrice,
     addStaticImage,
     addDynamicImage,
@@ -2628,6 +2839,7 @@ function historySignature(state: HistoryState): string {
     addElement,
     addSnippet,
     applyStarterTemplate,
+    changeScreenColorMode,
     applyRegionalPreferences,
     applyRecognizedPriceTagTemplate,
     clearCanvasObjects,

@@ -2,7 +2,7 @@ import { BasePlugin } from '../BasePlugin';
 import type { PluginContext } from '@/core/types';
 import { EinkRenderer } from '@/renderer/EinkRenderer';
 import type { RenderResult } from '@/renderer/types';
-import type { DitheringConfig } from '@/screen/types';
+import type { DitheringConfig, ScreenProfile } from '@/screen/types';
 
 type BrowserScheduler = typeof globalThis & {
   requestIdleCallback?: (
@@ -80,6 +80,14 @@ export class EinkRenderPlugin extends BasePlugin {
 
   getLastPreview(): RenderResult | undefined {
     return this.lastResult;
+  }
+
+  setProfile(profile: ScreenProfile): void {
+    this.renderer.setProfile(profile);
+    this.lastResult = undefined;
+    void this.renderPreview().catch(() => {
+      // renderPreview already logs failures; avoid an unhandled promise here.
+    });
   }
 
   setDitheringAlgorithm(algorithm: DitheringConfig['algorithm']): void {

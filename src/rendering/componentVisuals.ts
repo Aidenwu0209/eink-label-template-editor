@@ -416,6 +416,7 @@ function createBoundedGroup(objects: fabric.Object[], bounds: VisualBounds): fab
       originY: 'center',
       left: (object.left ?? 0) + width / 2 - bounds.width / 2,
       top: (object.top ?? 0) + height / 2 - bounds.height / 2,
+      objectCaching: false,
     });
     return object;
   });
@@ -424,6 +425,7 @@ function createBoundedGroup(objects: fabric.Object[], bounds: VisualBounds): fab
     ...groupBounds(bounds),
     width: bounds.width,
     height: bounds.height,
+    objectCaching: false,
   } as any);
   return group;
 }
@@ -594,6 +596,8 @@ function createBarcodeImage(
     top: 0,
     selectable: false,
     evented: false,
+    imageSmoothing: false,
+    objectCaching: false,
   });
 }
 

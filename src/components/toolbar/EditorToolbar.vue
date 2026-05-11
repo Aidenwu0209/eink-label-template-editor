@@ -50,6 +50,14 @@ const { t } = useI18n();
 
 const toolCardDefs: Array<Omit<ToolCard, 'title' | 'description'> & { titleKey: string; descriptionKey: string }> = [
   {
+    kind: 'CUSTOM_DATA_TEXT',
+    group: 'data',
+    mark: '{}',
+    titleKey: 'toolbar.tools.CUSTOM_DATA_TEXT.title',
+    descriptionKey: 'toolbar.tools.CUSTOM_DATA_TEXT.description',
+    badge: 'custom',
+  },
+  {
     kind: 'PRICE',
     group: 'data',
     mark: '',

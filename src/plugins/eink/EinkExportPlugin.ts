@@ -2,6 +2,7 @@ import { BasePlugin } from '../BasePlugin';
 import type { PluginContext } from '@/core/types';
 import type { FabricJSON } from '@/boot/types';
 import { EinkRenderer } from '@/renderer/EinkRenderer';
+import type { ScreenProfile } from '@/screen/types';
 
 /**
  * EinkExportPlugin — enhanced export for E-ink devices
@@ -31,6 +32,10 @@ export class EinkExportPlugin extends BasePlugin {
 
   async exportFabricJSON(): Promise<FabricJSON> {
     return this.editor.exportJSON();
+  }
+
+  setProfile(profile: ScreenProfile): void {
+    this.renderer.setProfile(profile);
   }
 
   async exportDitheredImage(format: 'png' | 'bmp' = 'png'): Promise<Blob> {
