@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createPriceTagTemplatePlan, selectSmartTemplateKind } from '../templatePlanner';
 import type { BootConfig } from '@/boot/types';
-import type { RecognizedPriceTag } from '../types';
+import type { OcrLineItem, OcrLineRole, RecognizedPriceTag } from '../types';
+import { normalizeOcrItems } from '../normalize';
 import { ScreenType } from '@/screen/types';
 
 const config: BootConfig = {
@@ -36,10 +37,37 @@ function tag(overrides: Partial<RecognizedPriceTag>): RecognizedPriceTag {
     fields: {},
     codes: {},
     rawItems: [],
+    lineItems: [],
     provider: 'browser-local',
     confidence: 0.8,
     warnings: [],
     ...overrides,
+  };
+}
+
+function line(
+  text: string,
+  role: OcrLineRole,
+  fieldKey: string | null,
+  left: number,
+  top: number,
+  width: number,
+  height: number
+): OcrLineItem {
+  const [item] = normalizeOcrItems([
+    {
+      text,
+      score: 0.92,
+      box: { left, top, width, height },
+    },
+  ]);
+  return {
+    ...item,
+    id: `${role}_${left}_${top}`,
+    role,
+    fieldKey,
+    includeInTemplate: true,
+    warnings: [],
   };
 }
 
@@ -93,5 +121,52 @@ describe('OCR fixed template planner', () => {
 
     expect(plan.elements.some((element) => element.type === 'BARCODE')).toBe(true);
     expect(plan.elements.some((element) => element.type === 'QRCODE')).toBe(true);
+  });
+
+  it('restores every OCR line into the generated layout by default mode choice', () => {
+    const lineItems = [
+      line('进口香蕉', 'productName', 'productName', 10, 12, 90, 18),
+      line('¥5.98', 'price', 'price', 10, 42, 78, 34),
+      line('冷藏保存', 'customText', 'ocrText1', 12, 86, 70, 14),
+    ];
+    const plan = createPriceTagTemplatePlan(config, tag({
+      fields: {
+        productName: '进口香蕉',
+        price: 5.98,
+        ocrText1: '冷藏保存',
+      },
+      rawItems: lineItems,
+      lineItems,
+      image: { width: 296, height: 128 },
+    }), 'restore');
+
+    const plannedIds = new Set(plan.elements.flatMap((element) => element.sourceItemIds ?? []));
+    expect(plan.kind).toBe('restore');
+    expect(plan.elements.some((element) => element.type === 'PRICE' && element.fieldBinding === 'price')).toBe(true);
+    expect(plan.elements.some((element) => element.type === 'TEXT' && element.fallback === '冷藏保存')).toBe(true);
+    expect(lineItems.every((item) => plannedIds.has(item.id))).toBe(true);
+  });
+
+  it('keeps fixed templates but appends OCR lines that were not consumed by semantic fields', () => {
+    const lineItems = [
+      line('鲜选超市', 'brand', 'brand', 10, 8, 60, 16),
+      line('进口香蕉', 'productName', 'productName', 10, 28, 90, 20),
+      line('¥5.98', 'price', 'price', 10, 56, 78, 34),
+    ];
+    const plan = createPriceTagTemplatePlan(config, tag({
+      fields: {
+        brand: '鲜选超市',
+        productName: '进口香蕉',
+        price: 5.98,
+      },
+      rawItems: lineItems,
+      lineItems,
+      image: { width: 296, height: 128 },
+    }), 'standard');
+
+    const plannedIds = new Set(plan.elements.flatMap((element) => element.sourceItemIds ?? []));
+    expect(plan.kind).toBe('standard');
+    expect(plan.elements.some((element) => element.type === 'TEXT' && element.fallback === '鲜选超市')).toBe(true);
+    expect(lineItems.every((item) => plannedIds.has(item.id))).toBe(true);
   });
 });

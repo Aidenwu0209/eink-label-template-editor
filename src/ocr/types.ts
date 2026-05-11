@@ -23,6 +23,28 @@ export interface OcrTextItem {
   box: OcrBox;
 }
 
+export type OcrLineRole =
+  | 'productName'
+  | 'brand'
+  | 'price'
+  | 'memberPrice'
+  | 'originalPrice'
+  | 'discount'
+  | 'spec'
+  | 'description'
+  | 'origin'
+  | 'promoText'
+  | 'barcodeContent'
+  | 'qrContent'
+  | 'customText';
+
+export interface OcrLineItem extends OcrTextItem {
+  role: OcrLineRole;
+  fieldKey: string | null;
+  includeInTemplate: boolean;
+  warnings: string[];
+}
+
 export interface OcrCodeResults {
   barcodeContent?: string;
   qrContent?: string;
@@ -46,6 +68,7 @@ export interface RecognizedPriceTag {
   fields: PriceTagFields;
   codes: OcrCodeResults;
   rawItems: OcrTextItem[];
+  lineItems: OcrLineItem[];
   provider: OcrProviderMode | 'fallback-api' | 'manual-stub';
   confidence: number;
   warnings: string[];

@@ -33,6 +33,9 @@ describe('price tag OCR field extraction', () => {
     expect(result.fields.brand).toBe('鲜选超市');
     expect(result.codes.barcodeContent).toBe('SKU1001');
     expect(result.codes.qrContent).toContain('example.com');
+    expect(result.lineItems).toHaveLength(items.length);
+    expect(result.lineItems.find((line) => line.text === '促销价 ¥12.90')?.role).toBe('price');
+    expect(result.lineItems.find((line) => line.text === 'SKU1001')?.role).toBe('barcodeContent');
     expect(result.confidence).toBeGreaterThan(0.6);
   });
 
@@ -50,6 +53,25 @@ describe('price tag OCR field extraction', () => {
     expect(result.fields.price).toBe(12.9);
   });
 
+  it('handles English shelf labels without treating short item codes as prices or barcodes', () => {
+    const items = normalizeOcrItems([
+      item('MS ANALOG', 20, 20, 76, 16, 0.95),
+      item('TIMER', 98, 20, 54, 16, 0.99),
+      item('RETAIL PRICE', 20, 38, 70, 10, 1),
+      item('23', 240, 22, 28, 18, 0.99),
+      item('1772', 166, 145, 44, 16, 1),
+      item('FAC 1 CAP 6', 230, 166, 70, 12, 0.94),
+    ]);
+
+    const result = extractPriceTagFromOcr(items, 'browser-local', {}, { width: 310, height: 204 });
+
+    expect(result.fields.productName).toBe('MS ANALOG TIMER');
+    expect(result.fields.price).toBeUndefined();
+    expect(result.codes.barcodeContent).toBeUndefined();
+    expect(result.lineItems.find((line) => line.text === '1772')?.role).not.toBe('price');
+    expect(result.lineItems.find((line) => line.text === 'FAC 1 CAP 6')?.role).not.toBe('barcodeContent');
+  });
+
   it('keeps leftover useful text as custom fields', () => {
     const items = normalizeOcrItems([
       item('进口香蕉', 10, 12, 80, 18),
@@ -62,5 +84,23 @@ describe('price tag OCR field extraction', () => {
     expect(result.fields.productName).toBe('进口香蕉');
     expect(result.fields.price).toBe(5.98);
     expect(result.fields.description).toBe('冷藏保存');
+    expect(result.lineItems.map((line) => line.text)).toEqual(['进口香蕉', '¥5.98', '冷藏保存']);
+  });
+
+  it('keeps every unclassified OCR line instead of capping custom fields', () => {
+    const raw = [
+      item('商品A', 10, 10, 42, 14),
+      item('¥9.90', 10, 30, 52, 22),
+      ...Array.from({ length: 14 }, (_, index) =>
+        item(`补充文本${index + 1}`, 12, 58 + index * 12, 72, 10)
+      ),
+    ];
+    const items = normalizeOcrItems(raw);
+
+    const result = extractPriceTagFromOcr(items, 'browser-local');
+
+    expect(result.lineItems).toHaveLength(items.length);
+    expect(Object.keys(result.customFields ?? {}).length).toBeGreaterThan(6);
+    expect(result.lineItems.every((line) => line.includeInTemplate)).toBe(true);
   });
 });
