@@ -1,5 +1,7 @@
 # Eink Label Template Editor
 
+[中文文档](./README.zh-CN.md)
+
 Design, preview, and export templates for electronic shelf labels.
 
 Eink Label Template Editor is a lightweight visual editor for ESL and e-ink price tag layouts. It is built for teams that already have product data, screen profiles, and backend systems, and need a focused frontend editor that can be embedded into their own workflow.
