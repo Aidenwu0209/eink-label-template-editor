@@ -1271,9 +1271,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   min-width: 0;
-  height: 66px;
-  padding: 0 18px 0 14px;
+  height: 58px;
+  padding: 0 10px;
   background:
     linear-gradient(180deg, rgba(38, 40, 46, 0.96), rgba(19, 21, 26, 0.98)),
     var(--surface-panel);
@@ -1289,9 +1290,9 @@ onUnmounted(() => {
 .toolbar-left {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex: 0 1 220px;
-  min-width: 160px;
+  gap: 8px;
+  flex: 0 1 238px;
+  min-width: 132px;
 }
 
 .toolbar-left > div {
@@ -1299,8 +1300,8 @@ onUnmounted(() => {
 }
 
 .app-badge {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1318,7 +1319,7 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 750;
   letter-spacing: 0.01em;
   color: var(--text-strong);
@@ -1326,7 +1327,7 @@ onUnmounted(() => {
 
 .toolbar-subtitle {
   display: block;
-  margin-top: 2px;
+  margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1337,19 +1338,19 @@ onUnmounted(() => {
 .document-tabs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  flex: 1 1 auto;
-  margin: 0 10px;
+  flex: 0 1 auto;
+  margin: 0;
 }
 
 .document-tab {
   min-width: 0;
-  max-width: clamp(120px, 18vw, 280px);
+  max-width: clamp(92px, 10vw, 150px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 8px 12px;
+  padding: 7px 10px;
   border: 1px solid var(--line-soft);
   border-radius: 10px 10px 6px 6px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
@@ -1362,7 +1363,7 @@ onUnmounted(() => {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
   justify-content: flex-end;
@@ -1371,14 +1372,14 @@ onUnmounted(() => {
 .template-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: min(36vw, 520px);
+  max-width: min(28vw, 430px);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
-  padding: 4px;
+  padding: 3px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid var(--line-faint);
@@ -1386,8 +1387,8 @@ onUnmounted(() => {
 
 .template-select,
 .canvas-size-select {
-  max-width: 150px;
-  height: 28px;
+  max-width: 128px;
+  height: 30px;
   color: var(--text-main);
   background: rgba(8, 9, 11, 0.48);
   border: 1px solid var(--line-soft);
@@ -1397,27 +1398,27 @@ onUnmounted(() => {
 }
 
 .canvas-size-select {
-  max-width: 118px;
+  width: 104px;
 }
 
 .regional-controls {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 5px;
-  max-width: min(34vw, 272px);
+  gap: 4px;
+  max-width: min(24vw, 244px);
   overflow: hidden;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid rgba(216, 183, 96, 0.16);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.045);
 }
 
 .regional-select {
-  height: 28px;
-  min-width: 72px;
-  max-width: 126px;
-  padding: 0 24px 0 9px;
+  height: 30px;
+  min-width: 70px;
+  max-width: 112px;
+  padding: 0 22px 0 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-strong);
@@ -1439,23 +1440,23 @@ onUnmounted(() => {
   align-items: center;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: min(40vw, 430px);
+  max-width: min(30vw, 376px);
   overflow-x: auto;
   overflow-y: hidden;
-  gap: 5px;
-  padding: 4px;
+  gap: 4px;
+  padding: 3px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid var(--line-faint);
 }
 
 .screen-info {
-  max-width: 220px;
+  max-width: 145px;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 12px;
   color: var(--text-muted);
-  padding: 7px 10px;
+  padding: 6px 9px;
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid var(--line-faint);
   border-radius: 999px;
@@ -1464,7 +1465,7 @@ onUnmounted(() => {
 
 .toolbar-btn {
   white-space: nowrap;
-  padding: 7px 14px;
+  padding: 7px 12px;
   font-size: 12px;
   font-weight: 650;
   background: rgba(255, 255, 255, 0.065);
@@ -1476,12 +1477,12 @@ onUnmounted(() => {
 }
 
 .toolbar-btn.compact {
-  padding: 5px 8px;
+  padding: 6px 8px;
 }
 
 .toolbar-btn.icon {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -1497,6 +1498,7 @@ onUnmounted(() => {
 }
 
 .toolbar-btn.smart-import {
+  padding-inline: 13px;
   color: var(--accent-ink);
   background: linear-gradient(180deg, var(--accent-strong), var(--accent));
   border-color: rgba(241, 217, 137, 0.76);
@@ -2487,15 +2489,23 @@ onUnmounted(() => {
 
 @media (max-width: 1100px) {
   .toolbar-left {
-    min-width: 150px;
+    min-width: 118px;
   }
 
   .document-tabs {
-    margin: 0 10px;
+    margin: 0;
   }
 
   .template-actions {
+    max-width: 30vw;
+  }
+
+  .regional-controls {
     max-width: 28vw;
+  }
+
+  .zoom-controls {
+    max-width: 30vw;
   }
 
   .screen-info {
@@ -2518,11 +2528,11 @@ onUnmounted(() => {
   }
 
   .editor-topbar {
-    padding-right: 10px;
+    padding-inline: 8px;
   }
 
   .template-actions {
-    max-width: 34vw;
+    max-width: 36vw;
   }
 
   .regional-controls {
