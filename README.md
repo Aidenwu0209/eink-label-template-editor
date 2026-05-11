@@ -1,63 +1,133 @@
 # Eink Label Template Editor
 
-A lightweight visual template editor for electronic shelf labels (ESL), built for product, retail, and IoT teams that need to design e-ink price tag templates and integrate them into their own business systems.
+Design, preview, and export templates for electronic shelf labels.
 
-The editor focuses on one job: turn externally provided screen profiles, template data, and preview data into editable ESL layouts, e-ink previews, and save-ready template payloads.
+Eink Label Template Editor is a lightweight visual editor for ESL and e-ink price tag layouts. It is built for teams that already have product data, screen profiles, and backend systems, and need a focused frontend editor that can be embedded into their own workflow.
 
-## Product Highlights
+## What You Can Do
 
-| Capability | What it provides |
-| --- | --- |
-| Profile-driven canvas | Creates a fixed-size editing canvas from an external Screen Profile. |
-| E-ink preview | Quantizes the canvas into the target e-ink color palette for realistic preview. |
-| ESL widgets | Supports text, images, prices, discounts, QR codes, and CODE128 barcodes. |
-| Dynamic data binding | Binds widgets to product fields such as `productName`, `price`, `imageUrl`, `qrContent`, and `barcodeContent`. |
-| Palette constraints | Restricts colors to the current screen profile palette: BW, BWR, BWRY, or E6. |
-| Host integration | Returns Full JSON, Static PNG Base64, and Dynamic Metadata through `onSave` or `saveApi`. |
+- Create fixed-size ESL canvases from external screen profiles.
+- Design templates with text, rectangles, lines, images, prices, discounts, QR codes, and CODE128 barcodes.
+- Bind template widgets to product data such as `productName`, `price`, `imageUrl`, `qrContent`, and `barcodeContent`.
+- Preview the final result using the target e-ink color palette.
+- Save a complete payload containing editable JSON, static PNG Base64, and dynamic metadata.
 
-## Why This Exists
+## Quick Start
 
-Electronic shelf labels are small, constrained, and device-specific. A normal design canvas is not enough: every template needs to respect screen size, limited color palettes, dynamic product data, and final e-ink rendering behavior.
+```bash
+git clone https://github.com/Aidenwu0209/eink-label-template-editor.git
+cd eink-label-template-editor
+npm install
+npm run dev
+```
 
-This project provides a focused editor that can be embedded into a larger pricing, retail, ERP, or IoT platform without taking over backend responsibilities such as user management, template storage, device pushing, or approval workflows.
-
-## Core Workflow
+Open the local URL printed by Vite, usually:
 
 ```plain
-Host Business System
+http://127.0.0.1:5173/
+```
+
+If you want to use a fixed local port:
+
+```bash
+npm run dev -- --host 127.0.0.1 --port 4173
+```
+
+Then open:
+
+```plain
+http://127.0.0.1:4173/
+```
+
+## Try It With Sample Data
+
+The editor accepts initialization data from either `window.__ESL_EDITOR_INIT__` or a URL `?init=<base64-json>` parameter.
+
+Generate a ready-to-open demo URL:
+
+```bash
+node - <<'NODE'
+const payload = {
+  mode: 'create',
+  profile: {
+    profileId: 'profile_296_128_bwr',
+    name: '2.9 inch black-white-red ESL',
+    width: 296,
+    height: 128,
+    colorMode: 'BWR',
+    palette: [
+      { name: 'white', value: '#FFFFFF' },
+      { name: 'black', value: '#000000' },
+      { name: 'red', value: '#CC0000' }
+    ]
+  },
+  previewData: {
+    productName: 'Organic Milk',
+    price: 12.9,
+    discount: 8.8,
+    description: '300ml x 12',
+    imageUrl: 'https://picsum.photos/80',
+    qrContent: 'https://example.com/item/1001',
+    barcodeContent: 'SKU1001',
+    brand: 'Fresh Market'
+  },
+  saveApi: '/api/template/save'
+};
+
+const init = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+console.log(`http://127.0.0.1:5173/?init=${encodeURIComponent(init)}`);
+NODE
+```
+
+Paste the generated URL into your browser. The editor will load with a 296 x 128 BWR screen profile and sample product data.
+
+## Product Flow
+
+```plain
+Host system
   |
-  | passes mode, Screen Profile, template JSON, previewData
+  | passes screen profile, template JSON, preview data
   v
 Eink Label Template Editor
   |
   | visual editing + e-ink preview
   v
-Save Payload
+Save payload
   |-- Full JSON
   |-- Static PNG Base64
   |-- Dynamic Metadata
   v
-Host Business System stores or publishes the template
+Host system stores, publishes, or sends the template
 ```
 
-## Supported Components
+## Core Features
 
-| Component | Type | Purpose |
+| Feature | Description |
+| --- | --- |
+| Profile-driven canvas | Canvas size, color mode, and palette come from the external Screen Profile. |
+| E-ink preview | The preview is quantized to the selected profile palette, including BW, BWR, BWRY, and E6. |
+| Visual editing | Add, select, move, and configure widgets on a Fabric.js canvas. |
+| Dynamic binding | Bind text, image, price, discount, QR code, and barcode widgets to product fields. |
+| Palette-safe styling | Color pickers only expose colors supported by the current screen profile. |
+| Save integration | Use `onSave` for embedded apps or `saveApi` for direct API posting. |
+| Export-ready output | Save payload includes editable JSON, static PNG Base64, and dynamic widget metadata. |
+
+## Supported Widgets
+
+| Widget | Type | Dynamic binding |
 | --- | --- | --- |
-| Rectangle | `RECT` | Background blocks, borders, labels. |
-| Line | `LINE` | Dividers and simple decoration. |
-| Text | `TEXT` | Static text or product field binding. |
-| Image | `IMAGE` | Static logos or dynamic product images from `imageUrl`. |
-| Price | `PRICE` | Composite price widget with currency, integer, and decimal styling. |
-| Discount | `DISCOUNT` | Discount badges or formatted discount text. |
-| QR Code | `QRCODE` | Fixed binding to `qrContent`. |
-| Barcode | `BARCODE` | CODE128 barcode fixed binding to `barcodeContent`. |
+| Rectangle | `RECT` | Static only |
+| Line | `LINE` | Static only |
+| Text | `TEXT` | `productName`, `description`, custom text fields |
+| Image | `IMAGE` | `imageUrl` |
+| Price | `PRICE` | `price` |
+| Discount | `DISCOUNT` | `discount` |
+| QR code | `QRCODE` | `qrContent` |
+| Barcode | `BARCODE` | `barcodeContent` |
 
-## Screen Profiles
+## Screen Profile Support
 
-The editor is fully driven by external Screen Profiles. It currently supports:
-
-| Color mode | Palette |
+| Mode | Colors |
 | --- | --- |
 | `BW` | Black, white |
 | `BWR` | Black, white, red |
@@ -81,46 +151,22 @@ Example profile:
 }
 ```
 
-## Integration Contract
+## Save Payload
 
-The host application can initialize the editor using `window.__ESL_EDITOR_INIT__` or a URL `?init=<base64-json>` parameter.
+When the user clicks Save, the editor generates:
 
 ```json
 {
-  "mode": "create",
+  "templateId": "tpl_xxx",
+  "templateName": "Eink Label Template",
   "profile": {
     "profileId": "profile_296_128_bwr",
     "name": "2.9 inch black-white-red ESL",
     "width": 296,
     "height": 128,
     "colorMode": "BWR",
-    "palette": [
-      { "name": "white", "value": "#FFFFFF" },
-      { "name": "black", "value": "#000000" },
-      { "name": "red", "value": "#CC0000" }
-    ]
+    "palette": []
   },
-  "previewData": {
-    "productName": "Organic Milk",
-    "price": 12.9,
-    "discount": 8.8,
-    "description": "300ml x 12",
-    "imageUrl": "https://example.com/product.png",
-    "qrContent": "https://example.com/item/1001",
-    "barcodeContent": "SKU1001",
-    "brand": "Fresh Market"
-  },
-  "saveApi": "/api/template/save"
-}
-```
-
-When the user saves, the editor generates:
-
-```json
-{
-  "templateId": "tpl_xxx",
-  "templateName": "Eink Label Template",
-  "profile": {},
   "fullJson": {},
   "staticDynamic": {
     "staticImage": {
@@ -145,60 +191,94 @@ When the user saves, the editor generates:
 }
 ```
 
-## Quick Start
+## Integration Options
+
+### Embedded Callback
+
+Use `onSave` when the editor is embedded in a host frontend:
+
+```ts
+window.__ESL_EDITOR_INIT__ = {
+  mode: 'create',
+  profile,
+  previewData,
+  onSave(payload) {
+    console.log('save template', payload);
+  }
+};
+```
+
+### API Save
+
+Use `saveApi` when the editor should post directly:
+
+```json
+{
+  "saveApi": "/api/template/save"
+}
+```
+
+The editor posts the generated save payload as JSON.
+
+## What This Project Is Not
+
+This repository intentionally focuses on the frontend editor. It does not include:
+
+- User accounts or permissions.
+- Template database persistence.
+- Template versioning or approval workflows.
+- ESL device push protocols.
+- Vendor-specific firmware or gateway integrations.
+
+Those responsibilities should live in the host business system.
+
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open:
+Type check:
 
-```plain
-http://127.0.0.1:5173/
+```bash
+npx vue-tsc -b
 ```
 
-To run the validation suite:
+Run the node-based validation suite:
 
 ```bash
 npm run test:node
-npx vue-tsc -b
+```
+
+Build:
+
+```bash
+npm run build
 ```
 
 ## Tech Stack
 
 | Layer | Technology |
 | --- | --- |
-| UI | Vue 3, TypeScript, Pinia |
-| Canvas editing | Fabric.js |
-| E-ink rendering | Custom palette quantization and Floyd-Steinberg dithering |
-| QR code | `qrcode` |
-| Build tooling | Vite |
+| App | Vue 3, TypeScript, Pinia |
+| Canvas | Fabric.js |
+| E-ink rendering | Palette quantization, Floyd-Steinberg dithering |
+| QR generation | `qrcode` |
+| Tooling | Vite |
 | Tests | Node.js built-in test runner |
 
-## Current Status
+## Status
 
-This repository contains the MVP implementation of the ESL template editor. It is designed as an embeddable frontend module, not a full template management platform.
+MVP implementation is available. The current version is suitable for local evaluation, integration experiments, and product workflow validation.
 
-Included in the MVP:
+Planned next steps:
 
-- External initialization contract
-- Profile-driven fixed canvas
-- Palette-constrained editing
-- E-ink preview
-- Basic and business widgets
-- Dynamic field binding
-- Save payload generation
-- `onSave` and `saveApi` integration paths
+- Add polished default layout presets.
+- Add import/export examples for host systems.
+- Add stronger browser-level regression tests.
+- Add product screenshots and hosted demo documentation.
 
-Not included by design:
+## License
 
-- User accounts and permissions
-- Backend template persistence
-- Template versioning and approval
-- ESL device push protocol
-- Vendor-specific firmware integration
-
-## Repository
-
-GitHub: [Aidenwu0209/eink-label-template-editor](https://github.com/Aidenwu0209/eink-label-template-editor)
+No license has been specified yet.
