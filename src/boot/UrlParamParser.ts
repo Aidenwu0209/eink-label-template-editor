@@ -12,6 +12,7 @@ export class UrlParamParser {
       screenType: params.get('screenType') ?? params.get('screen') ?? undefined,
       templateId: params.get('templateId') ?? params.get('tid') ?? undefined,
       apiBase: params.get('apiBase') ?? undefined,
+      ocrApi: params.get('ocrApi') ?? undefined,
       screenConfigId: params.get('screenConfigId') ?? undefined,
     };
   }

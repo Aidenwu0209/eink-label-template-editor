@@ -6,8 +6,11 @@ import FabricCanvas from '@/components/canvas/FabricCanvas.vue';
 import PreviewCanvas from '@/components/canvas/PreviewCanvas.vue';
 import EditorToolbar from '@/components/toolbar/EditorToolbar.vue';
 import PropertiesPanel from '@/components/panel/PropertiesPanel.vue';
+import SmartImportDialog from '@/components/ocr/SmartImportDialog.vue';
 import { getValidCustomFieldIdsFromPreviewData } from '@/fields';
 import type { FabricJSON } from '@/boot/types';
+import type { RecognizedPriceTag } from '@/ocr/types';
+import type { SmartTemplateKind } from '@/ocr/templatePlanner';
 
 type LocalTemplateRecord = {
   id: string;
@@ -52,6 +55,7 @@ const isToolboxCollapsed = ref(false);
 const isToolboxPeekOpen = ref(false);
 const isToolboxResizing = ref(false);
 const isToolDropTarget = ref(false);
+const showSmartImportDialog = ref(false);
 
 const screenInfo = computed(() => {
   const p = config.screen.profile;
@@ -360,6 +364,13 @@ async function handleSave() {
   }
 }
 
+function handleSmartImportApply(payload: { recognized: RecognizedPriceTag; templateKind: SmartTemplateKind }): void {
+  editorStore.applyRecognizedPriceTagTemplate(payload.recognized, payload.templateKind);
+  showSmartImportDialog.value = false;
+  saveMessage.value = { type: 'success', text: '已生成智能价签模板，可继续微调后保存。' };
+  setTimeout(() => { saveMessage.value = null; }, 2800);
+}
+
 function updateWorkspaceSize() {
   const el = workspaceRef.value;
   if (!el) return;
@@ -574,6 +585,7 @@ onUnmounted(() => {
         <span class="screen-info">{{ screenInfo }}</span>
       </div>
       <div class="template-actions" aria-label="模板快捷切换">
+        <button class="toolbar-btn smart-import" title="上传价签图片并自动识别排版" @click="showSmartImportDialog = true">智能导入</button>
         <button class="toolbar-btn compact" title="套用零售价签固定模板" @click="editorStore.applyStarterTemplate('retail')">零售价签</button>
         <button class="toolbar-btn compact" title="套用条码追踪固定模板" @click="editorStore.applyStarterTemplate('barcode')">条码模板</button>
         <select
@@ -873,6 +885,14 @@ onUnmounted(() => {
         {{ saveMessage.text }}
       </span>
     </footer>
+
+    <SmartImportDialog
+      :open="showSmartImportDialog"
+      :config="config"
+      :has-existing-objects="editorStore.drawableObjectCount > 0"
+      @close="showSmartImportDialog = false"
+      @apply="handleSmartImportApply"
+    />
   </div>
 </template>
 
@@ -1042,6 +1062,13 @@ onUnmounted(() => {
   border-color: rgba(240, 211, 91, 0.55);
   color: #fff7d1;
   background: rgba(240, 211, 91, 0.14);
+}
+
+.toolbar-btn.smart-import {
+  color: #17130a;
+  background: #f0d35b;
+  border-color: rgba(240, 211, 91, 0.78);
+  box-shadow: 0 7px 18px rgba(240, 211, 91, 0.14);
 }
 
 .zoom-label {

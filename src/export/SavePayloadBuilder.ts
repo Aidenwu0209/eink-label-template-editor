@@ -112,12 +112,13 @@ function extractWidget(
       };
     }
     case 'PRICE': {
+      const fieldId = ext?.fieldBinding ?? 'price';
       return {
         id: widgetIdForObject(obj, 'price'),
         type: 'PRICE',
-        fieldId: 'price',
+        fieldId,
         ...widgetGeometry(obj),
-        defaultValue: previewData?.price != null ? String(previewData.price) : '',
+        defaultValue: previewData?.[fieldId] != null ? String(previewData[fieldId]) : '',
       };
     }
     case 'DISCOUNT': {

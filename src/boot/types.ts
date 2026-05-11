@@ -24,8 +24,14 @@ export interface ProfileConfig {
 export interface PreviewData {
   productName?: string;
   price?: number;
+  originalPrice?: number;
+  memberPrice?: number;
   discount?: number;
   description?: string;
+  spec?: string;
+  brand?: string;
+  origin?: string;
+  promoText?: string;
   imageUrl?: string;
   qrContent?: string;
   barcodeContent?: string;
@@ -48,6 +54,8 @@ export interface EditorInitPayload {
   onSave?: OnSaveCallback;
   /** Fallback save API URL when onSave is not provided */
   saveApi?: string;
+  /** Optional PaddleOCR API endpoint used by smart image import */
+  ocrApi?: string;
 }
 
 // ══════════ URL Params (legacy) ══════════
@@ -59,6 +67,7 @@ export interface UrlParams {
   screenType?: string;
   templateId?: string;
   apiBase?: string;
+  ocrApi?: string;
   screenConfigId?: string;
 }
 
@@ -91,6 +100,8 @@ export interface BootConfig {
   onSave?: OnSaveCallback;
   /** Fallback save API URL when onSave is not provided */
   saveApi?: string;
+  /** Optional PaddleOCR API endpoint used by smart image import */
+  ocrApi?: string;
 }
 
 // ══════════ Boot State Machine ══════════

@@ -65,6 +65,7 @@ export class ConfigResolver {
       },
       onSave: payload.onSave,
       saveApi: payload.saveApi,
+      ocrApi: payload.ocrApi,
     };
   }
 
@@ -116,6 +117,7 @@ export class ConfigResolver {
       api: {
         baseUrl: urlParams.apiBase || '/api',
       },
+      ocrApi: urlParams.ocrApi,
     };
   }
 

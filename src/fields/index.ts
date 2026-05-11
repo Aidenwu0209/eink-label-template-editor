@@ -2,6 +2,7 @@ export {
   SYSTEM_FIELDS,
   CUSTOM_FIELD_TYPE,
   TEXT_BINDABLE_FIELDS,
+  PRICE_BINDABLE_FIELDS,
   validateCustomFieldId,
   isValidCustomFieldId,
   filterValidCustomFieldIds,
@@ -11,5 +12,6 @@ export type {
   SystemField,
   CustomFieldType,
   CustomField,
+  PriceBindableField,
   FieldValidationError,
 } from './constants';

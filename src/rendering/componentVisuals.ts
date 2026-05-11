@@ -61,7 +61,7 @@ export function createPriceVisual(
   bounds: VisualBounds,
   ext: PriceExtension
 ): fabric.Group {
-  const value = formatPrice(config.previewData?.price, ext);
+  const value = formatPrice(config.previewData?.[ext.fieldBinding ?? 'price'], ext);
   const fittedExt = fitPriceExtension(bounds, ext, value);
   const baseline = Math.max(2, Math.round((bounds.height - fittedExt.integerStyle.fontSize) / 2));
   const parts: fabric.Object[] = [

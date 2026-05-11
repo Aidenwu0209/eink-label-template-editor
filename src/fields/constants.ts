@@ -6,8 +6,14 @@
 export const SYSTEM_FIELDS = [
   'productName',
   'price',
+  'originalPrice',
+  'memberPrice',
   'discount',
   'description',
+  'spec',
+  'brand',
+  'origin',
+  'promoText',
   'imageUrl',
   'qrContent',
   'barcodeContent',
@@ -16,7 +22,20 @@ export const SYSTEM_FIELDS = [
 export type SystemField = (typeof SYSTEM_FIELDS)[number];
 
 /** System fields that TEXT can bind to */
-export const TEXT_BINDABLE_FIELDS: readonly string[] = ['productName', 'description', 'barcodeContent'] as const;
+export const TEXT_BINDABLE_FIELDS: readonly string[] = [
+  'productName',
+  'description',
+  'spec',
+  'brand',
+  'origin',
+  'promoText',
+  'barcodeContent',
+  'qrContent',
+] as const;
+
+/** System fields that PRICE can bind to */
+export const PRICE_BINDABLE_FIELDS = ['price', 'originalPrice', 'memberPrice'] as const;
+export type PriceBindableField = (typeof PRICE_BINDABLE_FIELDS)[number];
 
 /** Custom field supports text type only */
 export const CUSTOM_FIELD_TYPE = 'text' as const;

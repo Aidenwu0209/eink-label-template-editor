@@ -8,6 +8,13 @@ import { EinkExportPlugin } from '@/plugins/eink/EinkExportPlugin';
 import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData } from '@/boot/types';
 import type { ColorEntry } from '@/screen/types';
 import { buildSavePayload, type SavePayload } from '@/export/SavePayloadBuilder';
+import { PRICE_BINDABLE_FIELDS, type PriceBindableField } from '@/fields/constants';
+import type { RecognizedPriceTag } from '@/ocr/types';
+import {
+  createPriceTagTemplatePlan,
+  type SmartTemplateKind,
+  type TemplateElementPlan,
+} from '@/ocr/templatePlanner';
 import {
   createBarcodeVisual,
   createDiscountVisual,
@@ -148,8 +155,8 @@ export interface DiscountExtension {
 
 /** PRICE component extension data stored on fabric object */
 export interface PriceExtension {
-  /** Always 'price' */
-  fieldBinding: 'price';
+  /** Preview data field rendered by this price component */
+  fieldBinding: PriceBindableField;
   /** Currency symbol, default ¥ */
   currencySymbol: string;
   /** Whether to show currency symbol */
@@ -335,6 +342,11 @@ export const useEditorStore = defineStore('editor', () => {
   const hasActiveSelection = computed(() => {
     selectionVersion.value;
     return getActiveDrawableObjects().length > 0;
+  });
+  const drawableObjectCount = computed(() => {
+    selectionVersion.value;
+    const core = editor.value;
+    return core ? getCanvasDrawableObjects(core).length : 0;
   });
   const isActiveSelectionLocked = computed(() => {
     selectionVersion.value;
@@ -1135,6 +1147,8 @@ export const useEditorStore = defineStore('editor', () => {
       fontSize: number;
       fontWeight?: 'normal' | 'bold';
       textAlign?: 'left' | 'center' | 'right';
+      fill?: string;
+      lineClamp?: number;
     }
   ): fabric.Textbox {
     const fieldBinding = options.fieldBinding ?? null;
@@ -1148,7 +1162,7 @@ export const useEditorStore = defineStore('editor', () => {
       fontFamily: 'AlibabaPuHuiTi',
       fontSize: scaledPresetValue(config, options.fontSize),
       fontWeight: options.fontWeight ?? 'bold',
-      fill: '#000000',
+      fill: options.fill ?? '#000000',
       textAlign: options.textAlign ?? 'left',
       lineHeight: 1.15,
       editable: true,
@@ -1157,36 +1171,45 @@ export const useEditorStore = defineStore('editor', () => {
     (text as any).extension = {
       fieldBinding,
       overflow: 'ellipsis' as TextOverflowMode,
-      lineClamp: 1,
+      lineClamp: options.lineClamp ?? 1,
       verticalAlign: 'top' as const,
     };
     return text;
   }
 
-  function createStarterPriceObject(config: BootConfig, bounds: VisualBounds): fabric.Group {
+  function createStarterPriceObject(
+    config: BootConfig,
+    bounds: VisualBounds,
+    fieldBinding: PriceBindableField = 'price',
+    variant: 'main' | 'secondary' = 'main'
+  ): fabric.Group {
     const { accent } = getPaletteAccentColors(config);
+    const mainIntegerSize = variant === 'main' ? 34 : 15;
+    const mainCurrencySize = variant === 'main' ? 13 : 9;
+    const mainDecimalSize = variant === 'main' ? 16 : 9;
+    const mainColor = variant === 'main' ? accent : '#000000';
     const ext = {
-      fieldBinding: 'price',
+      fieldBinding,
       currencySymbol: '¥',
       showCurrency: true,
       decimalPlaces: 2,
       thousandSeparator: ',',
       decimalSeparator: '.',
       currencyStyle: {
-        fontSize: scaledPresetValue(config, 13),
-        fontWeight: 'bold' as const,
+        fontSize: scaledPresetValue(config, mainCurrencySize),
+        fontWeight: variant === 'main' ? 'bold' as const : 'normal' as const,
         color: '#000000',
       },
       integerStyle: {
-        fontSize: scaledPresetValue(config, 34),
+        fontSize: scaledPresetValue(config, mainIntegerSize),
         fontWeight: 'bold' as const,
-        color: accent,
+        color: mainColor,
       },
       decimalStyle: {
-        fontSize: scaledPresetValue(config, 16),
+        fontSize: scaledPresetValue(config, mainDecimalSize),
         fontWeight: 'normal' as const,
-        color: accent,
-        offsetY: -scaledPresetValue(config, 8),
+        color: mainColor,
+        offsetY: -scaledPresetValue(config, variant === 'main' ? 8 : 4),
       },
     } satisfies PriceExtension;
 
@@ -1249,6 +1272,73 @@ export const useEditorStore = defineStore('editor', () => {
       selectedObject.value = null;
       core.fabricCanvas.renderAll();
     });
+  }
+
+  function createTemplatePlanObject(config: BootConfig, element: TemplateElementPlan): fabric.Object {
+    if (element.type === 'TEXT') {
+      return createStarterTextObject(config, element.bounds, {
+        fallback: element.fallback,
+        fieldBinding: element.fieldBinding,
+        fontSize: element.fontSize,
+        fontWeight: element.fontWeight,
+        textAlign: element.textAlign,
+        fill: element.fill,
+        lineClamp: element.lineClamp,
+      });
+    }
+
+    if (element.type === 'PRICE') {
+      return createStarterPriceObject(config, element.bounds, element.fieldBinding, element.variant);
+    }
+
+    if (element.type === 'DISCOUNT') {
+      return createStarterDiscountObject(config, element.bounds);
+    }
+
+    if (element.type === 'BARCODE') {
+      return createStarterBarcodeObject(config, element.bounds, element.showText);
+    }
+
+    if (element.type === 'QRCODE') {
+      return createStarterQrcodeObject(config, element.bounds);
+    }
+
+    const y = element.bounds.top;
+    const line = new fabric.Line([
+      element.bounds.left,
+      y,
+      element.bounds.left + element.bounds.width,
+      y,
+    ], {
+      stroke: '#000000',
+      strokeWidth: Math.max(1, element.bounds.height),
+    });
+    (line as any).extensionType = 'LINE';
+    return line;
+  }
+
+  function mergeRecognizedPreviewData(config: BootConfig, tag: RecognizedPriceTag): void {
+    const previewData = (config.previewData ??= {} as PreviewData);
+    const merged = {
+      ...tag.fields,
+      ...tag.codes,
+      ...(tag.customFields ?? {}),
+    };
+
+    for (const [field, value] of Object.entries(merged)) {
+      if (value === undefined || value === null || value === '') continue;
+      previewData[field] = normalizePreviewDataValue(field, value);
+    }
+  }
+
+  function applyRecognizedPriceTagTemplate(tag: RecognizedPriceTag, preferredKind: SmartTemplateKind = 'auto'): void {
+    const core = editor.value;
+    if (!core) return;
+
+    mergeRecognizedPreviewData(core.bootConfig, tag);
+    const plan = createPriceTagTemplatePlan(core.bootConfig, tag, preferredKind);
+    const objects = plan.elements.map((element) => createTemplatePlanObject(core.bootConfig, element));
+    replaceCanvasObjects(objects);
   }
 
   function addDiscount(position?: ToolPosition): void {
@@ -1563,7 +1653,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function normalizePreviewDataValue(field: string, value: unknown): unknown {
-    if (field === 'price' || field === 'discount') {
+    if (PRICE_BINDABLE_FIELDS.includes(field as PriceBindableField) || field === 'discount') {
       const numeric = Number(value);
       return Number.isFinite(numeric) ? numeric : value;
     }
@@ -1575,7 +1665,7 @@ export const useEditorStore = defineStore('editor', () => {
     const ext = (obj as any).extension as { fieldBinding?: string | null; source?: string } | undefined;
 
     if (type === 'TEXT') return ext?.fieldBinding === field;
-    if (type === 'PRICE') return field === 'price';
+    if (type === 'PRICE') return (ext?.fieldBinding ?? 'price') === field;
     if (type === 'DISCOUNT') return field === 'discount';
     if (type === 'IMAGE') return ext?.source === 'dynamic' && ext?.fieldBinding === field;
     if (type === 'QRCODE') return field === 'qrContent';
@@ -2101,6 +2191,7 @@ export const useEditorStore = defineStore('editor', () => {
     hasClipboard,
     hasActiveSelection,
     isActiveSelectionLocked,
+    drawableObjectCount,
     layerEntries,
     initEditor,
     loadTemplate,
@@ -2116,6 +2207,7 @@ export const useEditorStore = defineStore('editor', () => {
     addBarcode,
     addElement,
     applyStarterTemplate,
+    applyRecognizedPriceTagTemplate,
     clearCanvasObjects,
     updateObjectProp,
     updatePreviewDataField,

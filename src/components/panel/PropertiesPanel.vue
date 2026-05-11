@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import type * as fabric from 'fabric';
 import PaletteColorPicker from '@/components/common/PaletteColorPicker.vue';
-import { filterValidCustomFieldIds, TEXT_BINDABLE_FIELDS } from '@/fields';
+import { filterValidCustomFieldIds, PRICE_BINDABLE_FIELDS, TEXT_BINDABLE_FIELDS, type PriceBindableField } from '@/fields';
 import { TEXT_OVERFLOW_MODES, IMAGE_FIT_MODES, QRCODE_ERROR_CORRECTIONS } from '@/stores/editorStore';
 import type { TextExtension, TextOverflowMode, ImageExtension, ImageFitMode, PriceExtension, DiscountExtension, QrcodeExtension, QrcodeErrorCorrection, BarcodeExtension } from '@/stores/editorStore';
 import type { ColorEntry } from '@/screen/types';
@@ -35,7 +35,13 @@ const FIELD_LABELS: Record<string, string> = {
   productName: '商品名称',
   description: '商品描述',
   price: '价格',
+  originalPrice: '原价',
+  memberPrice: '会员价',
   discount: '折扣',
+  spec: '规格',
+  brand: '品牌',
+  origin: '产地',
+  promoText: '促销文案',
   imageUrl: '图片地址',
   qrContent: '二维码内容',
   barcodeContent: '条形码内容',
@@ -177,7 +183,11 @@ const priceThousandSep = computed(() => priceExt.value?.thousandSeparator ?? ','
 const priceDecimalSep = computed(() => priceExt.value?.decimalSeparator ?? '.');
 const priceWidth = computed(() => (props.selectedObject as fabric.Rect)?.width ?? 0);
 const priceHeight = computed(() => (props.selectedObject as fabric.Rect)?.height ?? 0);
-const pricePreviewValue = computed(() => props.previewData?.price == null ? '' : String(props.previewData.price));
+const priceFieldBinding = computed<PriceBindableField>(() => priceExt.value?.fieldBinding ?? 'price');
+const pricePreviewValue = computed(() => {
+  const field = priceFieldBinding.value;
+  return props.previewData?.[field] == null ? '' : String(props.previewData[field]);
+});
 
 // DISCOUNT properties
 const discountExt = computed<DiscountExtension | null>(() => {
@@ -538,21 +548,29 @@ function handleStaticImageFileChange(event: Event) {
 
     <!-- PRICE properties -->
     <template v-if="isPrice">
-      <div class="info-row">
-        <span>数据字段</span>
-        <b>{{ fieldOptionLabel('price') }}</b>
+      <div class="prop-group prop-wide">
+        <label class="prop-label">数据字段</label>
+        <select
+          class="prop-input"
+          :value="priceFieldBinding"
+          @change="updateProp('ext.fieldBinding', ($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="field in PRICE_BINDABLE_FIELDS" :key="field" :value="field">
+            {{ fieldOptionLabel(field) }}
+          </option>
+        </select>
       </div>
 
       <div class="prop-group prop-wide">
-        <label class="prop-label">预览价格</label>
+        <label class="prop-label">预览{{ FIELD_LABELS[priceFieldBinding] ?? '价格' }}</label>
         <input
           type="number"
           step="0.01"
           class="prop-input"
           :value="pricePreviewValue"
-          @change="updatePreviewField('price', ($event.target as HTMLInputElement).value)"
+          @change="updatePreviewField(priceFieldBinding, ($event.target as HTMLInputElement).value)"
         />
-        <div class="prop-hint">修改测试数据会刷新所有绑定 price 的价格组件。</div>
+        <div class="prop-hint">修改测试数据会刷新所有绑定该字段的价格组件。</div>
       </div>
 
       <div class="quick-preset-row">
