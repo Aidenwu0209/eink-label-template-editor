@@ -16,7 +16,7 @@ export const SYSTEM_FIELDS = [
 export type SystemField = (typeof SYSTEM_FIELDS)[number];
 
 /** System fields that TEXT can bind to */
-export const TEXT_BINDABLE_FIELDS: readonly string[] = ['productName', 'description'] as const;
+export const TEXT_BINDABLE_FIELDS: readonly string[] = ['productName', 'description', 'barcodeContent'] as const;
 
 /** Custom field supports text type only */
 export const CUSTOM_FIELD_TYPE = 'text' as const;

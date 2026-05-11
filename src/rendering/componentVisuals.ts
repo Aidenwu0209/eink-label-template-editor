@@ -62,7 +62,8 @@ export function createPriceVisual(
   ext: PriceExtension
 ): fabric.Group {
   const value = formatPrice(config.previewData?.price, ext);
-  const baseline = Math.max(2, Math.round((bounds.height - ext.integerStyle.fontSize) / 2));
+  const fittedExt = fitPriceExtension(bounds, ext, value);
+  const baseline = Math.max(2, Math.round((bounds.height - fittedExt.integerStyle.fontSize) / 2));
   const parts: fabric.Object[] = [
     new fabric.Rect({
       left: 0,
@@ -80,58 +81,59 @@ export function createPriceVisual(
   if (value.currency) {
     const currency = new fabric.Text(value.currency, {
       left: x,
-      top: baseline + Math.max(0, ext.integerStyle.fontSize - ext.currencyStyle.fontSize),
+      top: baseline + Math.max(0, fittedExt.integerStyle.fontSize - fittedExt.currencyStyle.fontSize),
       fontFamily: 'AlibabaPuHuiTi',
-      fontSize: ext.currencyStyle.fontSize,
-      fontWeight: ext.currencyStyle.fontWeight,
-      fill: ext.currencyStyle.color,
+      fontSize: fittedExt.currencyStyle.fontSize,
+      fontWeight: fittedExt.currencyStyle.fontWeight,
+      fill: fittedExt.currencyStyle.color,
       selectable: false,
       evented: false,
     });
     parts.push(currency);
-    x += currency.width ?? ext.currencyStyle.fontSize;
+    x += currency.width ?? fittedExt.currencyStyle.fontSize;
   }
 
   const integer = new fabric.Text(value.integer, {
     left: x,
     top: baseline,
     fontFamily: 'AlibabaPuHuiTi',
-    fontSize: ext.integerStyle.fontSize,
-    fontWeight: ext.integerStyle.fontWeight,
-    fill: ext.integerStyle.color,
+    fontSize: fittedExt.integerStyle.fontSize,
+    fontWeight: fittedExt.integerStyle.fontWeight,
+    fill: fittedExt.integerStyle.color,
     selectable: false,
     evented: false,
   });
   parts.push(integer);
-  x += integer.width ?? ext.integerStyle.fontSize * value.integer.length;
+  x += integer.width ?? fittedExt.integerStyle.fontSize * value.integer.length;
 
   if (value.decimal) {
     parts.push(new fabric.Text(value.decimal, {
       left: x,
-      top: baseline + ext.decimalStyle.offsetY + Math.max(0, ext.integerStyle.fontSize - ext.decimalStyle.fontSize),
+      top: baseline + fittedExt.decimalStyle.offsetY + Math.max(0, fittedExt.integerStyle.fontSize - fittedExt.decimalStyle.fontSize),
       fontFamily: 'AlibabaPuHuiTi',
-      fontSize: ext.decimalStyle.fontSize,
-      fontWeight: ext.decimalStyle.fontWeight,
-      fill: ext.decimalStyle.color,
+      fontSize: fittedExt.decimalStyle.fontSize,
+      fontWeight: fittedExt.decimalStyle.fontWeight,
+      fill: fittedExt.decimalStyle.color,
       selectable: false,
       evented: false,
     }));
   }
 
-  return withExtension(createBoundedGroup(parts, bounds), 'PRICE', ext);
+  return withExtension(createBoundedGroup(parts, bounds), 'PRICE', fittedExt);
 }
 
 export function createDiscountVisual(bounds: VisualBounds, value: unknown, ext: DiscountExtension): fabric.Group {
   const text = ext.formatTemplate.replace('{value}', value == null ? '' : String(value));
+  const fittedExt = fitDiscountExtension(bounds, text, ext);
   const textObj = new fabric.Textbox(text, {
     left: 4,
-    top: verticalTextTop(bounds.height, ext.fontSize, ext.verticalAlign),
+    top: verticalTextTop(bounds.height, fittedExt.fontSize, fittedExt.verticalAlign),
     width: Math.max(0, bounds.width - 8),
     fontFamily: 'AlibabaPuHuiTi',
-    fontSize: ext.fontSize,
-    fontWeight: ext.fontWeight,
-    fill: ext.textColor,
-    textAlign: ext.textAlign,
+    fontSize: fittedExt.fontSize,
+    fontWeight: fittedExt.fontWeight,
+    fill: fittedExt.textColor,
+    textAlign: fittedExt.textAlign,
     selectable: false,
     evented: false,
   });
@@ -142,16 +144,16 @@ export function createDiscountVisual(bounds: VisualBounds, value: unknown, ext: 
       top: 0,
       width: bounds.width,
       height: bounds.height,
-      fill: ext.backgroundColor,
-      stroke: ext.textColor,
-      strokeWidth: ext.backgroundColor === ext.textColor ? 0 : 1,
+      fill: fittedExt.backgroundColor,
+      stroke: fittedExt.textColor,
+      strokeWidth: fittedExt.backgroundColor === fittedExt.textColor ? 0 : 1,
       rx: Math.min(4, Math.max(0, bounds.height / 5)),
       ry: Math.min(4, Math.max(0, bounds.height / 5)),
       selectable: false,
       evented: false,
     }),
     textObj,
-  ], bounds), 'DISCOUNT', ext);
+  ], bounds), 'DISCOUNT', fittedExt);
 }
 
 export async function createImageVisual(bounds: VisualBounds, ext: ImageExtension): Promise<fabric.Group> {
@@ -267,12 +269,19 @@ export function createBarcodeVisual(bounds: VisualBounds, content: unknown, ext:
   objects.push(createBarcodeImage(pattern, bounds.width, barHeight, ext));
 
   if (ext.showText) {
-    objects.push(new fabric.Text(value, {
-      left: bounds.width / 2,
+    const baseFontSize = Math.max(7, Math.min(10, textHeight - 2));
+    const measuredWidth = measureTextWidth(value, baseFontSize, 'normal');
+    const fontSize = measuredWidth > bounds.width - 4
+      ? scaleFontSize(baseFontSize, (bounds.width - 4) / measuredWidth, 7)
+      : baseFontSize;
+    objects.push(new fabric.Textbox(value, {
+      left: 0,
       top: barHeight,
-      originX: 'center',
+      originX: 'left',
+      originY: 'top',
+      width: bounds.width,
       fontFamily: 'AlibabaPuHuiTi',
-      fontSize: 10,
+      fontSize,
       fill: ext.foregroundColor,
       textAlign: 'center',
       selectable: false,
@@ -361,6 +370,75 @@ function createBoundedGroup(objects: fabric.Object[], bounds: VisualBounds): fab
     height: bounds.height,
   } as any);
   return group;
+}
+
+function measureTextWidth(text: string, fontSize: number, fontWeight: string): number {
+  const measured = new fabric.Text(text || ' ', {
+    fontFamily: 'AlibabaPuHuiTi',
+    fontSize,
+    fontWeight,
+  });
+  return measured.width ?? text.length * fontSize * 0.6;
+}
+
+function scaleFontSize(value: number, scale: number, minimum: number): number {
+  return Math.max(minimum, Math.floor(value * scale));
+}
+
+function fitPriceExtension(
+  bounds: VisualBounds,
+  ext: PriceExtension,
+  value: ReturnType<typeof formatPrice>
+): PriceExtension {
+  const currencyWidth = value.currency
+    ? measureTextWidth(value.currency, ext.currencyStyle.fontSize, ext.currencyStyle.fontWeight)
+    : 0;
+  const integerWidth = measureTextWidth(value.integer, ext.integerStyle.fontSize, ext.integerStyle.fontWeight);
+  const decimalWidth = value.decimal
+    ? measureTextWidth(value.decimal, ext.decimalStyle.fontSize, ext.decimalStyle.fontWeight)
+    : 0;
+  const contentWidth = currencyWidth + integerWidth + decimalWidth;
+  const maxFontHeight = Math.max(
+    ext.currencyStyle.fontSize,
+    ext.integerStyle.fontSize,
+    ext.decimalStyle.fontSize
+  );
+  const widthScale = contentWidth > 0 ? Math.max(0.1, (bounds.width - 2) / contentWidth) : 1;
+  const heightScale = maxFontHeight > 0 ? Math.max(0.1, (bounds.height - 2) / maxFontHeight) : 1;
+  const fitScale = Math.min(1, widthScale, heightScale);
+
+  if (fitScale >= 0.999) return ext;
+
+  return {
+    ...ext,
+    currencyStyle: {
+      ...ext.currencyStyle,
+      fontSize: scaleFontSize(ext.currencyStyle.fontSize, fitScale, 7),
+    },
+    integerStyle: {
+      ...ext.integerStyle,
+      fontSize: scaleFontSize(ext.integerStyle.fontSize, fitScale, 10),
+    },
+    decimalStyle: {
+      ...ext.decimalStyle,
+      fontSize: scaleFontSize(ext.decimalStyle.fontSize, fitScale, 7),
+      offsetY: Math.round(ext.decimalStyle.offsetY * fitScale),
+    },
+  };
+}
+
+function fitDiscountExtension(bounds: VisualBounds, text: string, ext: DiscountExtension): DiscountExtension {
+  const textWidth = measureTextWidth(text, ext.fontSize, ext.fontWeight);
+  const widthScale = textWidth > 0 ? Math.max(0.1, (bounds.width - 10) / textWidth) : 1;
+  const heightScale = ext.fontSize > 0 ? Math.max(0.1, (bounds.height - 4) / (ext.fontSize * 1.2)) : 1;
+  const fitScale = Math.min(1, widthScale, heightScale);
+
+  if (fitScale >= 0.999) return ext;
+
+  return {
+    ...ext,
+    fontSize: scaleFontSize(ext.fontSize, fitScale, 8),
+  };
 }
 
 function verticalTextTop(height: number, fontSize: number, align: DiscountExtension['verticalAlign']): number {

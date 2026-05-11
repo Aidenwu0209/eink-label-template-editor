@@ -269,6 +269,17 @@ function scaledPresetValue(config: BootConfig, value: number): number {
   return Math.max(1, Math.round(value * getPresetScale(config)));
 }
 
+function scaledStarterBounds(config: BootConfig, bounds: VisualBounds): VisualBounds {
+  const widthScale = config.canvas.width / PRESET_CANVAS_WIDTH;
+  const heightScale = config.canvas.height / PRESET_CANVAS_HEIGHT;
+  return fitBoundsToCanvas(config, {
+    left: Math.round(bounds.left * widthScale),
+    top: Math.round(bounds.top * heightScale),
+    width: Math.round(bounds.width * widthScale),
+    height: Math.round(bounds.height * heightScale),
+  });
+}
+
 function fitBoundsToCanvas(config: BootConfig, bounds: VisualBounds): VisualBounds {
   const canvasWidth = Math.max(1, roundNumber(config.canvas.width));
   const canvasHeight = Math.max(1, roundNumber(config.canvas.height));
@@ -1062,6 +1073,8 @@ export const useEditorStore = defineStore('editor', () => {
     const text = new fabric.Textbox('商品名称', {
       left: bounds.left,
       top: bounds.top,
+      originX: 'left',
+      originY: 'top',
       width: bounds.width,
       fontFamily: 'AlibabaPuHuiTi',
       fontSize: Math.max(10, scaledPresetValue(core.bootConfig, 16)),
@@ -1080,6 +1093,131 @@ export const useEditorStore = defineStore('editor', () => {
     };
 
     addVisualObject(text);
+  }
+
+  function createStarterTextObject(
+    config: BootConfig,
+    bounds: VisualBounds,
+    options: {
+      fallback: string;
+      fieldBinding?: string | null;
+      fontSize: number;
+      fontWeight?: 'normal' | 'bold';
+      textAlign?: 'left' | 'center' | 'right';
+    }
+  ): fabric.Textbox {
+    const fieldBinding = options.fieldBinding ?? null;
+    const value = fieldBinding ? config.previewData?.[fieldBinding] : null;
+    const text = new fabric.Textbox(value == null ? options.fallback : String(value), {
+      left: bounds.left,
+      top: bounds.top,
+      originX: 'left',
+      originY: 'top',
+      width: bounds.width,
+      fontFamily: 'AlibabaPuHuiTi',
+      fontSize: scaledPresetValue(config, options.fontSize),
+      fontWeight: options.fontWeight ?? 'bold',
+      fill: '#000000',
+      textAlign: options.textAlign ?? 'left',
+      lineHeight: 1.15,
+      editable: true,
+    });
+    (text as any).extensionType = 'TEXT';
+    (text as any).extension = {
+      fieldBinding,
+      overflow: 'ellipsis' as TextOverflowMode,
+      lineClamp: 1,
+      verticalAlign: 'top' as const,
+    };
+    return text;
+  }
+
+  function createStarterPriceObject(config: BootConfig, bounds: VisualBounds): fabric.Group {
+    const { accent } = getPaletteAccentColors(config);
+    const ext = {
+      fieldBinding: 'price',
+      currencySymbol: '¥',
+      showCurrency: true,
+      decimalPlaces: 2,
+      thousandSeparator: ',',
+      decimalSeparator: '.',
+      currencyStyle: {
+        fontSize: scaledPresetValue(config, 13),
+        fontWeight: 'bold' as const,
+        color: '#000000',
+      },
+      integerStyle: {
+        fontSize: scaledPresetValue(config, 34),
+        fontWeight: 'bold' as const,
+        color: accent,
+      },
+      decimalStyle: {
+        fontSize: scaledPresetValue(config, 16),
+        fontWeight: 'normal' as const,
+        color: accent,
+        offsetY: -scaledPresetValue(config, 8),
+      },
+    } satisfies PriceExtension;
+
+    return createPriceVisual(config, bounds, ext);
+  }
+
+  function createStarterDiscountObject(config: BootConfig, bounds: VisualBounds): fabric.Group {
+    const { accent, onAccent } = getPaletteAccentColors(config);
+    const ext = {
+      fieldBinding: 'discount',
+      formatTemplate: '{value}折',
+      backgroundColor: accent,
+      textColor: onAccent,
+      fontSize: scaledPresetValue(config, 23),
+      fontWeight: 'bold' as const,
+      textAlign: 'center' as const,
+      verticalAlign: 'middle' as const,
+    } satisfies DiscountExtension;
+
+    return createDiscountVisual(bounds, config.previewData?.discount, ext);
+  }
+
+  function createStarterBarcodeObject(config: BootConfig, bounds: VisualBounds, showText = true): fabric.Group {
+    const ext = {
+      fieldBinding: 'barcodeContent',
+      format: 'CODE128',
+      showText,
+      foregroundColor: '#000000',
+      backgroundColor: '#FFFFFF',
+    } satisfies BarcodeExtension;
+
+    return createBarcodeVisual(bounds, config.previewData?.barcodeContent, ext);
+  }
+
+  function createStarterQrcodeObject(config: BootConfig, bounds: VisualBounds): fabric.Group {
+    const ext = {
+      fieldBinding: 'qrContent',
+      errorCorrection: 'M' as QrcodeErrorCorrection,
+      margin: 1,
+      foregroundColor: '#000000',
+      backgroundColor: '#FFFFFF',
+    } satisfies QrcodeExtension;
+
+    return createQrcodeVisual(bounds, config.previewData?.qrContent, ext);
+  }
+
+  function replaceCanvasObjects(objects: fabric.Object[]): void {
+    const core = editor.value;
+    if (!core) return;
+
+    runHistoryMutation(() => {
+      core.fabricCanvas.discardActiveObject();
+      getCanvasDrawableObjects(core).forEach((obj) => core.fabricCanvas.remove(obj));
+      objects.forEach((obj) => {
+        ensureObjectId(obj);
+        prepareEditableObject(obj);
+        core.fabricCanvas.add(obj);
+      });
+      core.fabricCanvas.discardActiveObject();
+      selectedObject.value = null;
+      core.fabricCanvas.renderAll();
+    });
   }
 
   function addDiscount(): void {
@@ -1218,21 +1356,54 @@ export const useEditorStore = defineStore('editor', () => {
     const core = editor.value;
     if (!core) return;
 
-    clearCanvasObjects();
+    const config = core.bootConfig;
+    const bounds = (left: number, top: number, width: number, height: number) =>
+      scaledStarterBounds(config, { left, top, width, height });
 
     if (kind === 'retail') {
-      addText();
-      addPrice();
-      addDiscount();
-      addBarcode();
+      replaceCanvasObjects([
+        createStarterTextObject(config, bounds(10, 10, 170, 22), {
+          fallback: '商品名称',
+          fieldBinding: 'productName',
+          fontSize: 15,
+        }),
+        createStarterPriceObject(config, bounds(10, 36, 128, 48)),
+        createStarterDiscountObject(config, bounds(152, 42, 132, 36)),
+        createStarterBarcodeObject(config, bounds(10, 94, 204, 25), false),
+      ]);
     } else if (kind === 'barcode') {
-      addText();
-      addBarcode();
-      addQrcode();
+      replaceCanvasObjects([
+        createStarterTextObject(config, bounds(10, 12, 205, 22), {
+          fallback: '商品名称',
+          fieldBinding: 'productName',
+          fontSize: 15,
+        }),
+        createStarterBarcodeObject(config, bounds(10, 48, 190, 42), false),
+        createStarterTextObject(config, bounds(10, 94, 190, 16), {
+          fallback: String(config.previewData?.barcodeContent ?? 'SKU1001'),
+          fieldBinding: 'barcodeContent',
+          fontSize: 9,
+          fontWeight: 'normal',
+          textAlign: 'center',
+        }),
+        createStarterQrcodeObject(config, bounds(225, 36, 58, 58)),
+      ]);
     } else {
-      addText();
-      addQrcode();
-      addDiscount();
+      replaceCanvasObjects([
+        createStarterQrcodeObject(config, bounds(10, 28, 72, 72)),
+        createStarterTextObject(config, bounds(96, 16, 180, 22), {
+          fallback: '扫码查看详情',
+          fieldBinding: 'productName',
+          fontSize: 15,
+        }),
+        createStarterDiscountObject(config, bounds(96, 52, 128, 34)),
+        createStarterTextObject(config, bounds(96, 92, 180, 18), {
+          fallback: '扫描二维码领取优惠',
+          fieldBinding: 'description',
+          fontSize: 10,
+          fontWeight: 'normal',
+        }),
+      ]);
     }
   }
 
