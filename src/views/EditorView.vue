@@ -45,8 +45,10 @@ const fabricCanvasRef = ref<InstanceType<typeof FabricCanvas>>();
 const editorShellRef = ref<HTMLElement>();
 const workspaceRef = ref<HTMLElement>();
 const workspaceSize = ref({ width: 0, height: 0 });
+const viewportSize = ref({ width: 1280, height: 800 });
 const manualZoom = ref<number | null>(null);
 const previewManualZoom = ref<number | null>(null);
+const fullscreenPreviewManualZoom = ref<number | null>(null);
 const showGrid = ref(true);
 const savedTemplates = ref<LocalTemplateRecord[]>([]);
 const recentTools = ref<ToolKind[]>([]);
@@ -59,6 +61,7 @@ const isToolboxPeekOpen = ref(false);
 const isToolboxResizing = ref(false);
 const isToolDropTarget = ref(false);
 const showSmartImportDialog = ref(false);
+const isPreviewOverlayOpen = ref(false);
 
 const screenInfo = computed(() => {
   const p = config.screen.profile;
@@ -132,6 +135,7 @@ const selectedObjectLabel = computed(() => {
 });
 
 const quickFields = computed(() => {
+  editorStore.selectionVersion;
   const obj = editorStore.selectedObject as any;
   if (!obj) return [];
   if (obj.type === 'line') {
@@ -415,6 +419,15 @@ function updateWorkspaceSize() {
   workspaceSize.value = { width: rect.width, height: rect.height };
 }
 
+function updateViewportSize() {
+  viewportSize.value = { width: window.innerWidth, height: window.innerHeight };
+}
+
+function handleWindowResize() {
+  updateWorkspaceSize();
+  updateViewportSize();
+}
+
 function setZoom(next: number) {
   manualZoom.value = Math.min(4, Math.max(0.1, Number(next.toFixed(2))));
 }
@@ -456,6 +469,32 @@ function fitPreviewZoom() {
   previewManualZoom.value = null;
 }
 
+function setFullscreenPreviewZoom(next: number) {
+  fullscreenPreviewManualZoom.value = Math.min(8, Math.max(0.25, Number(next.toFixed(2))));
+}
+
+function fullscreenPreviewZoomIn() {
+  setFullscreenPreviewZoom(fullscreenPreviewScale.value + 0.25);
+}
+
+function fullscreenPreviewZoomOut() {
+  setFullscreenPreviewZoom(fullscreenPreviewScale.value - 0.25);
+}
+
+function resetFullscreenPreviewZoom() {
+  setFullscreenPreviewZoom(1);
+}
+
+function fitFullscreenPreviewZoom() {
+  fullscreenPreviewManualZoom.value = null;
+}
+
+function openPreviewOverlay() {
+  updateViewportSize();
+  isPreviewOverlayOpen.value = true;
+  fitFullscreenPreviewZoom();
+}
+
 function handleLayerDragStart(layerId: string, event: DragEvent): void {
   draggedLayerId.value = layerId;
   event.dataTransfer?.setData('text/plain', layerId);
@@ -483,6 +522,12 @@ function isEditableKeyTarget(target: EventTarget | null): boolean {
 }
 
 function handleEditorKeydown(event: KeyboardEvent): void {
+  if (isPreviewOverlayOpen.value && event.key === 'Escape') {
+    event.preventDefault();
+    isPreviewOverlayOpen.value = false;
+    return;
+  }
+
   if (isEditableKeyTarget(event.target)) return;
 
   const key = event.key.toLowerCase();
@@ -522,8 +567,8 @@ onMounted(async () => {
   loadLocalTemplates();
   loadEditorUiPreferences();
   await nextTick();
-  updateWorkspaceSize();
-  window.addEventListener('resize', updateWorkspaceSize);
+  handleWindowResize();
+  window.addEventListener('resize', handleWindowResize);
 
   const canvasEl = (fabricCanvasRef.value as any)?.canvasElement as HTMLCanvasElement;
   if (!canvasEl) {
@@ -571,10 +616,10 @@ const gridOverlayStyle = computed(() => {
 });
 
 const previewFitScale = computed(() => {
-  const maxWidth = 252;
-  const maxHeight = 112;
+  const maxWidth = 272;
+  const maxHeight = 104;
   const scaleX = maxWidth / config.canvas.width;
-  const scaleY = maxHeight / (config.canvas.height + 34);
+  const scaleY = maxHeight / config.canvas.height;
   return Math.min(scaleX, scaleY, 1.8);
 });
 
@@ -583,11 +628,28 @@ const previewZoomLabel = computed(() => `${Math.round(previewScale.value * 100)}
 
 const previewContainerStyle = computed(() => ({
   width: config.canvas.width * previewScale.value + 'px',
-  height: (config.canvas.height + 34) * previewScale.value + 'px',
+  height: config.canvas.height * previewScale.value + 'px',
 }));
 
 const previewTransformStyle = computed(() => ({
   transform: `scale(${previewScale.value})`,
+  transformOrigin: 'top left',
+}));
+
+const fullscreenPreviewFitScale = computed(() => {
+  const maxWidth = Math.max(240, viewportSize.value.width - 96);
+  const maxHeight = Math.max(180, viewportSize.value.height - 164);
+  return Math.min(maxWidth / config.canvas.width, maxHeight / config.canvas.height, 8);
+});
+
+const fullscreenPreviewScale = computed(() => fullscreenPreviewManualZoom.value ?? fullscreenPreviewFitScale.value);
+const fullscreenPreviewZoomLabel = computed(() => `${Math.round(fullscreenPreviewScale.value * 100)}%`);
+const fullscreenPreviewContainerStyle = computed(() => ({
+  width: config.canvas.width * fullscreenPreviewScale.value + 'px',
+  height: config.canvas.height * fullscreenPreviewScale.value + 'px',
+}));
+const fullscreenPreviewTransformStyle = computed(() => ({
+  transform: `scale(${fullscreenPreviewScale.value})`,
   transformOrigin: 'top left',
 }));
 
@@ -599,7 +661,7 @@ watch(
 );
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateWorkspaceSize);
+  window.removeEventListener('resize', handleWindowResize);
   window.removeEventListener('keydown', handleEditorKeydown);
   window.removeEventListener('mousemove', handleToolboxResizeMove);
   window.removeEventListener('mouseup', stopToolboxResize);
@@ -798,6 +860,7 @@ onUnmounted(() => {
               <button title="放大预览" @click="previewZoomIn">+</button>
               <button title="预览 100%" @click="resetPreviewZoom">100%</button>
               <button title="适应预览区域" @click="fitPreviewZoom">适应</button>
+              <button title="全屏放大预览" @click="openPreviewOverlay">全屏</button>
             </div>
           </div>
           <div class="preview-stage">
@@ -806,6 +869,7 @@ onUnmounted(() => {
                 <PreviewCanvas
                   :width="config.canvas.width"
                   :height="config.canvas.height"
+                  :show-header="false"
                 />
               </div>
             </div>
@@ -849,10 +913,12 @@ onUnmounted(() => {
             <PropertiesPanel
               v-if="inspectorTab === 'properties'"
               :selected-object="editorStore.selectedObject"
+              :selection-version="editorStore.selectionVersion"
               :palette="palette"
               :custom-fields="customFields"
               :preview-data="config.previewData"
               @update-prop="editorStore.updateObjectProp"
+              @update-props-batch="editorStore.updateObjectPropsBatch"
               @update-preview-field="editorStore.updatePreviewDataField"
             />
 
@@ -932,6 +998,46 @@ onUnmounted(() => {
       @close="showSmartImportDialog = false"
       @apply="handleSmartImportApply"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="isPreviewOverlayOpen"
+        class="preview-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="电子墨水屏全屏预览"
+        @click.self="isPreviewOverlayOpen = false"
+      >
+        <div class="preview-overlay-panel">
+          <div class="preview-overlay-toolbar">
+            <div>
+              <span class="preview-overlay-title">电子墨水屏全屏预览</span>
+              <small>{{ config.canvas.width }} × {{ config.canvas.height }} px</small>
+            </div>
+            <div class="preview-overlay-controls">
+              <button @click="fullscreenPreviewZoomOut">−</button>
+              <span>{{ fullscreenPreviewZoomLabel }}</span>
+              <button @click="fullscreenPreviewZoomIn">+</button>
+              <button @click="resetFullscreenPreviewZoom">100%</button>
+              <button @click="setFullscreenPreviewZoom(2)">200%</button>
+              <button @click="fitFullscreenPreviewZoom">适应窗口</button>
+              <button class="danger" @click="isPreviewOverlayOpen = false">关闭</button>
+            </div>
+          </div>
+          <div class="preview-overlay-stage">
+            <div class="preview-overlay-scaled" :style="fullscreenPreviewContainerStyle">
+              <div :style="fullscreenPreviewTransformStyle">
+                <PreviewCanvas
+                  :width="config.canvas.width"
+                  :height="config.canvas.height"
+                  :show-header="false"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -1869,6 +1975,110 @@ onUnmounted(() => {
 }
 .save-message.error {
   color: #f44336;
+}
+
+.preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 24% 12%, rgba(240, 211, 91, 0.12), transparent 30%),
+    rgba(4, 5, 6, 0.86);
+  backdrop-filter: blur(10px);
+  box-sizing: border-box;
+}
+
+.preview-overlay-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(40, 42, 43, 0.98), rgba(18, 19, 20, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 18px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
+}
+
+.preview-overlay-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  color: #f3ebdf;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.preview-overlay-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.preview-overlay-toolbar small {
+  display: block;
+  margin-top: 2px;
+  color: #a59e94;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.preview-overlay-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.preview-overlay-controls button {
+  min-height: 30px;
+  padding: 0 10px;
+  color: #ece4d8;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.preview-overlay-controls button:hover {
+  color: #fff4bc;
+  border-color: rgba(240, 211, 91, 0.5);
+}
+
+.preview-overlay-controls .danger {
+  color: #ffd3ca;
+  border-color: rgba(255, 122, 102, 0.36);
+}
+
+.preview-overlay-controls span {
+  min-width: 48px;
+  color: #d8d0c3;
+  font-size: 12px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.preview-overlay-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 28px;
+  overflow: auto;
+}
+
+.preview-overlay-scaled {
+  flex-shrink: 0;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.44);
 }
 
 @media (max-width: 1100px) {

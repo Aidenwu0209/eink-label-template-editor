@@ -72,6 +72,11 @@ export interface ComponentWarning {
   severity: 'warning';
 }
 
+export interface RenderMeta {
+  fitWarnings?: ComponentWarning[];
+  readabilityWarnings?: ComponentWarning[];
+}
+
 /** IMAGE component extension data stored on fabric object */
 export interface ImageExtension {
   /** static or dynamic image source */
@@ -103,8 +108,12 @@ export type QrcodeErrorCorrection = (typeof QRCODE_ERROR_CORRECTIONS)[number];
 
 /** QRCODE component extension data stored on fabric object */
 export interface QrcodeExtension {
-  /** Always 'qrContent' */
-  fieldBinding: 'qrContent';
+  /** Dynamic preview-data field or static per-element content */
+  source: 'dynamic' | 'static';
+  /** Field binding for dynamic QR codes */
+  fieldBinding: 'qrContent' | null;
+  /** Static QR code content */
+  content: string;
   /** Error correction level, default M */
   errorCorrection: QrcodeErrorCorrection;
   /** Margin in modules, default 1 */
@@ -115,12 +124,17 @@ export interface QrcodeExtension {
   backgroundColor: string;
   /** Last render readability warnings */
   readabilityWarnings?: ComponentWarning[];
+  renderMeta?: RenderMeta;
 }
 
 /** BARCODE component extension data stored on fabric object */
 export interface BarcodeExtension {
-  /** Always 'barcodeContent' */
-  fieldBinding: 'barcodeContent';
+  /** Dynamic preview-data field or static per-element content */
+  source: 'dynamic' | 'static';
+  /** Field binding for dynamic barcodes */
+  fieldBinding: 'barcodeContent' | null;
+  /** Static barcode content */
+  content: string;
   /** Only CODE128 is supported in v1 */
   format: 'CODE128';
   /** Whether to show text below barcode */
@@ -131,6 +145,7 @@ export interface BarcodeExtension {
   backgroundColor: string;
   /** Last render readability warnings */
   readabilityWarnings?: ComponentWarning[];
+  renderMeta?: RenderMeta;
 }
 
 /** DISCOUNT component extension data stored on fabric object */
@@ -143,6 +158,8 @@ export interface DiscountExtension {
   backgroundColor: string;
   /** Text color (palette-constrained) */
   textColor: string;
+  /** Font family */
+  fontFamily?: string;
   /** Font size */
   fontSize: number;
   /** Font weight */
@@ -151,12 +168,15 @@ export interface DiscountExtension {
   textAlign: 'left' | 'center' | 'right';
   /** Vertical alignment */
   verticalAlign: 'top' | 'middle' | 'bottom';
+  renderMeta?: RenderMeta;
 }
 
 /** PRICE component extension data stored on fabric object */
 export interface PriceExtension {
   /** Preview data field rendered by this price component */
   fieldBinding: PriceBindableField;
+  /** Font family used by all price segments */
+  fontFamily?: string;
   /** Currency symbol, default ¥ */
   currencySymbol: string;
   /** Whether to show currency symbol */
@@ -173,6 +193,7 @@ export interface PriceExtension {
   integerStyle: PriceStyleSegment;
   /** Style for decimal segment (supports offsetY) */
   decimalStyle: PriceStyleSegment & { offsetY: number };
+  renderMeta?: RenderMeta;
 }
 
 export interface LayerEntry {
@@ -215,6 +236,7 @@ export interface ToolPosition {
 interface HistoryState {
   version?: string;
   background?: unknown;
+  previewData: PreviewData;
   objects: FabricObjectJSON[];
   selectedIds: string[];
 }
@@ -343,6 +365,7 @@ export const useEditorStore = defineStore('editor', () => {
   let historySuppression = 0;
   let objectIdCounter = 0;
   let pasteOffset = 0;
+  const renderTokens = new Map<string, number>();
 
   const canUndo = computed(() => historyIndex.value > 0);
   const canRedo = computed(() => historyIndex.value >= 0 && historyIndex.value < historyStack.value.length - 1);
@@ -443,6 +466,18 @@ export const useEditorStore = defineStore('editor', () => {
     return (obj as any).id;
   }
 
+  function beginObjectRender(obj: fabric.Object): { id: string; token: number } | null {
+    const id = ensureObjectId(obj);
+    if (!id) return null;
+    const token = (renderTokens.get(id) ?? 0) + 1;
+    renderTokens.set(id, token);
+    return { id, token };
+  }
+
+  function isLatestObjectRender(render: { id: string; token: number } | null): boolean {
+    return !render || renderTokens.get(render.id) === render.token;
+  }
+
   function assignFreshObjectId(obj: fabric.Object): void {
     if (isWorkspaceObject(obj)) return;
     (obj as any).id = createObjectId((obj as any).extensionType ?? obj.type ?? 'object');
@@ -515,12 +550,13 @@ export const useEditorStore = defineStore('editor', () => {
     const priceHeight = scaledPresetValue(config, 38);
     const discountWidth = clampNumber(scaledPresetValue(config, 58), 36, Math.max(36, mainWidth));
     const discountHeight = scaledPresetValue(config, 26);
-    const barcodeHeight = scaledPresetValue(config, 30);
+    const barcodeHeight = scaledPresetValue(config, 26);
     const qrSize = clampNumber(
-      scaledPresetValue(config, 64),
-      30,
-      Math.max(30, Math.min(canvasWidth - margin * 2, canvasHeight - margin * 2, scaledPresetValue(config, 72)))
+      scaledPresetValue(config, 52),
+      28,
+      Math.max(28, Math.min(canvasWidth - margin * 2, canvasHeight - margin * 2, scaledPresetValue(config, 58)))
     );
+    const barcodeWidth = Math.min(canvasWidth - margin * 2, scaledPresetValue(config, 152));
 
     const presets: Record<PresetElementType, VisualBounds> = {
       RECT: {
@@ -560,15 +596,15 @@ export const useEditorStore = defineStore('editor', () => {
         height: rightSize,
       },
       QRCODE: {
-        left: canvasWidth - margin - qrSize,
-        top: canvasHeight - margin - qrSize,
+        left: Math.round((canvasWidth - qrSize) / 2),
+        top: Math.round((canvasHeight - qrSize) / 2),
         width: qrSize,
         height: qrSize,
       },
       BARCODE: {
-        left: margin,
-        top: canvasHeight - margin - barcodeHeight,
-        width: Math.min(mainWidth, scaledPresetValue(config, 180)),
+        left: Math.round((canvasWidth - barcodeWidth) / 2),
+        top: clampNumber(Math.round(canvasHeight * 0.68), margin, canvasHeight - margin - barcodeHeight),
+        width: barcodeWidth,
         height: barcodeHeight,
       },
     };
@@ -594,8 +630,8 @@ export const useEditorStore = defineStore('editor', () => {
 
     return fitBoundsToCanvas(core.bootConfig, {
       ...bounds,
-      left: position.left,
-      top: position.top,
+      left: position.left - bounds.width / 2,
+      top: position.top - bounds.height / 2,
     });
   }
 
@@ -614,6 +650,44 @@ export const useEditorStore = defineStore('editor', () => {
     }
 
     return { backgroundColor: '#FFFFFF', textColor: '#000000' };
+  }
+
+  function normalizeQrcodeExtension(ext: Partial<QrcodeExtension> | undefined): QrcodeExtension {
+    const source = ext?.source ?? 'dynamic';
+    return {
+      source,
+      fieldBinding: source === 'dynamic' ? 'qrContent' : null,
+      content: ext?.content ?? '',
+      errorCorrection: ext?.errorCorrection ?? 'M',
+      margin: ext?.margin ?? 1,
+      foregroundColor: ext?.foregroundColor ?? '#000000',
+      backgroundColor: ext?.backgroundColor ?? '#FFFFFF',
+      readabilityWarnings: ext?.readabilityWarnings,
+      renderMeta: ext?.renderMeta,
+    };
+  }
+
+  function normalizeBarcodeExtension(ext: Partial<BarcodeExtension> | undefined): BarcodeExtension {
+    const source = ext?.source ?? 'dynamic';
+    return {
+      source,
+      fieldBinding: source === 'dynamic' ? 'barcodeContent' : null,
+      content: ext?.content ?? '',
+      format: 'CODE128',
+      showText: ext?.showText ?? true,
+      foregroundColor: ext?.foregroundColor ?? '#000000',
+      backgroundColor: ext?.backgroundColor ?? '#FFFFFF',
+      readabilityWarnings: ext?.readabilityWarnings,
+      renderMeta: ext?.renderMeta,
+    };
+  }
+
+  function resolveQrcodeContent(config: BootConfig, ext: QrcodeExtension): unknown {
+    return ext.source === 'static' ? ext.content : config.previewData?.[ext.fieldBinding ?? 'qrContent'];
+  }
+
+  function resolveBarcodeContent(config: BootConfig, ext: BarcodeExtension): unknown {
+    return ext.source === 'static' ? ext.content : config.previewData?.[ext.fieldBinding ?? 'barcodeContent'];
   }
 
   function getObjectLayerLabel(obj: fabric.Object, index: number): string {
@@ -687,12 +761,13 @@ export const useEditorStore = defineStore('editor', () => {
     return cloneJson(obj.toObject(FABRIC_STATE_KEYS) as FabricObjectJSON);
   }
 
-  function historySignature(state: HistoryState): string {
-    return JSON.stringify({
-      background: state.background ?? null,
-      objects: state.objects,
-    });
-  }
+function historySignature(state: HistoryState): string {
+  return JSON.stringify({
+    background: state.background ?? null,
+    previewData: state.previewData,
+    objects: state.objects,
+  });
+}
 
   function captureHistoryState(core: EditorCore): HistoryState {
     ensureAllObjectIds(core);
@@ -707,6 +782,7 @@ export const useEditorStore = defineStore('editor', () => {
     return {
       version: json.version,
       background: json.background,
+      previewData: cloneJson((core.bootConfig.previewData ?? {}) as PreviewData),
       objects,
       selectedIds,
     };
@@ -904,6 +980,7 @@ export const useEditorStore = defineStore('editor', () => {
       } as FabricJSON;
 
       await loadCanvasJSON(core, json);
+      core.bootConfig.previewData = cloneJson(state.previewData);
       ensureWorkspace(core);
       ensureAllObjectIds(core);
 
@@ -1038,8 +1115,9 @@ export const useEditorStore = defineStore('editor', () => {
     copyObjectRuntimeState(oldObj, nextObj);
     prepareEditableObject(nextObj);
     const index = core.fabricCanvas.getObjects().indexOf(oldObj);
+    if (index < 0) return;
     core.fabricCanvas.remove(oldObj);
-    core.fabricCanvas.insertAt(Math.max(index, 0), nextObj);
+    core.fabricCanvas.insertAt(index, nextObj);
     core.fabricCanvas.setActiveObject(nextObj);
     selectedObject.value = nextObj;
     core.fabricCanvas.renderAll();
@@ -1060,16 +1138,25 @@ export const useEditorStore = defineStore('editor', () => {
         createDiscountVisual(bounds, core.bootConfig.previewData?.discount, ext as DiscountExtension)
       );
     } else if (type === 'IMAGE') {
-      replaceObject(obj, await createImageVisual(bounds, ext as ImageExtension));
+      const render = beginObjectRender(obj);
+      const imageExt = ext as ImageExtension;
+      const nextExt = imageExt.source === 'dynamic'
+        ? { ...imageExt, src: String(core.bootConfig.previewData?.[imageExt.fieldBinding ?? 'imageUrl'] ?? '') }
+        : imageExt;
+      const nextObj = await createImageVisual(bounds, nextExt);
+      if (!isLatestObjectRender(render)) return;
+      replaceObject(obj, nextObj);
     } else if (type === 'QRCODE') {
+      const normalizedExt = normalizeQrcodeExtension(ext as Partial<QrcodeExtension>);
       replaceObject(
         obj,
-        createQrcodeVisual(bounds, core.bootConfig.previewData?.qrContent, ext as QrcodeExtension)
+        createQrcodeVisual(bounds, resolveQrcodeContent(core.bootConfig, normalizedExt), normalizedExt)
       );
     } else if (type === 'BARCODE') {
+      const normalizedExt = normalizeBarcodeExtension(ext as Partial<BarcodeExtension>);
       replaceObject(
         obj,
-        createBarcodeVisual(bounds, core.bootConfig.previewData?.barcodeContent, ext as BarcodeExtension)
+        createBarcodeVisual(bounds, resolveBarcodeContent(core.bootConfig, normalizedExt), normalizedExt)
       );
     }
   }
@@ -1209,6 +1296,7 @@ export const useEditorStore = defineStore('editor', () => {
     const mainColor = variant === 'main' ? accent : '#000000';
     const ext = {
       fieldBinding,
+      fontFamily: 'AlibabaPuHuiTi',
       currencySymbol: '¥',
       showCurrency: true,
       decimalPlaces: 2,
@@ -1242,6 +1330,7 @@ export const useEditorStore = defineStore('editor', () => {
       formatTemplate: '{value}折',
       backgroundColor,
       textColor,
+      fontFamily: 'AlibabaPuHuiTi',
       fontSize: scaledPresetValue(config, 23),
       fontWeight: 'bold' as const,
       textAlign: 'center' as const,
@@ -1253,26 +1342,30 @@ export const useEditorStore = defineStore('editor', () => {
 
   function createStarterBarcodeObject(config: BootConfig, bounds: VisualBounds, showText = true): fabric.Group {
     const ext = {
+      source: 'dynamic',
       fieldBinding: 'barcodeContent',
+      content: '',
       format: 'CODE128',
       showText,
       foregroundColor: '#000000',
       backgroundColor: '#FFFFFF',
     } satisfies BarcodeExtension;
 
-    return createBarcodeVisual(bounds, config.previewData?.barcodeContent, ext);
+    return createBarcodeVisual(bounds, resolveBarcodeContent(config, ext), ext);
   }
 
   function createStarterQrcodeObject(config: BootConfig, bounds: VisualBounds): fabric.Group {
     const ext = {
+      source: 'dynamic',
       fieldBinding: 'qrContent',
+      content: '',
       errorCorrection: 'M' as QrcodeErrorCorrection,
       margin: 1,
       foregroundColor: '#000000',
       backgroundColor: '#FFFFFF',
     } satisfies QrcodeExtension;
 
-    return createQrcodeVisual(bounds, config.previewData?.qrContent, ext);
+    return createQrcodeVisual(bounds, resolveQrcodeContent(config, ext), ext);
   }
 
   function replaceCanvasObjects(objects: fabric.Object[]): void {
@@ -1373,6 +1466,7 @@ export const useEditorStore = defineStore('editor', () => {
       formatTemplate: '{value}折',
       backgroundColor,
       textColor,
+      fontFamily: 'AlibabaPuHuiTi',
       fontSize: Math.max(10, Math.min(bounds.height - 6, scaledPresetValue(config, 17))),
       fontWeight: 'bold' as const,
       textAlign: 'center' as const,
@@ -1392,6 +1486,7 @@ export const useEditorStore = defineStore('editor', () => {
 
     const ext = {
       fieldBinding: 'price',
+      fontFamily: 'AlibabaPuHuiTi',
       currencySymbol: '¥',
       showCurrency: true,
       decimalPlaces: 2,
@@ -1463,14 +1558,16 @@ export const useEditorStore = defineStore('editor', () => {
     const bounds = getToolBounds(core, 'QRCODE', position);
 
     const ext = {
+      source: 'dynamic',
       fieldBinding: 'qrContent',
+      content: '',
       errorCorrection: 'M' as QrcodeErrorCorrection,
       margin: 1,
       foregroundColor: '#000000',
       backgroundColor: '#FFFFFF',
     } satisfies QrcodeExtension;
 
-    addVisualObject(createQrcodeVisual(bounds, config.previewData?.qrContent, ext));
+    addVisualObject(createQrcodeVisual(bounds, resolveQrcodeContent(config, ext), ext));
   }
 
   function addBarcode(position?: ToolPosition): void {
@@ -1481,14 +1578,16 @@ export const useEditorStore = defineStore('editor', () => {
     const bounds = getToolBounds(core, 'BARCODE', position);
 
     const ext = {
+      source: 'dynamic',
       fieldBinding: 'barcodeContent',
+      content: '',
       format: 'CODE128',
       showText: true,
       foregroundColor: '#000000',
       backgroundColor: '#FFFFFF',
     } satisfies BarcodeExtension;
 
-    addVisualObject(createBarcodeVisual(bounds, config.previewData?.barcodeContent, ext));
+    addVisualObject(createBarcodeVisual(bounds, resolveBarcodeContent(config, ext), ext));
   }
 
   function getSnippetBounds(core: EditorCore, kind: SnippetKind, position?: ToolPosition): VisualBounds {
@@ -1507,8 +1606,8 @@ export const useEditorStore = defineStore('editor', () => {
 
     return fitBoundsToCanvas(config, {
       ...base,
-      left: position.left,
-      top: position.top,
+      left: position.left - base.width / 2,
+      top: position.top - base.height / 2,
     });
   }
 
@@ -1686,6 +1785,10 @@ export const useEditorStore = defineStore('editor', () => {
         const ext = (obj as any).extension;
         if (ext) {
           ext[extKey] = value;
+          if (extKey === 'source') {
+            ext.fieldBinding = value === 'static' ? null : 'qrContent';
+            ext.content ??= '';
+          }
         }
         shouldRefreshVisual = true;
       } else if ((obj as any).extensionType === 'BARCODE' && key.startsWith('ext.')) {
@@ -1693,6 +1796,10 @@ export const useEditorStore = defineStore('editor', () => {
         const ext = (obj as any).extension;
         if (ext) {
           ext[extKey] = value;
+          if (extKey === 'source') {
+            ext.fieldBinding = value === 'static' ? null : 'barcodeContent';
+            ext.content ??= '';
+          }
         }
         shouldRefreshVisual = true;
       } else if (
@@ -1737,6 +1844,48 @@ export const useEditorStore = defineStore('editor', () => {
     commitHistory();
   }
 
+  async function updateObjectPropsBatch(patches: Array<{ key: string; value: unknown }>): Promise<void> {
+    const obj = selectedObject.value;
+    const core = editor.value;
+    if (!obj || !core || patches.length === 0) return;
+
+    let shouldRefreshVisual = false;
+    historySuppression++;
+    try {
+      for (const patch of patches) {
+        if (patch.key.startsWith('ext.')) {
+          const ext = (obj as any).extension;
+          if (!ext) continue;
+          const extKey = patch.key.slice(4);
+          ext[extKey] = patch.value;
+          if ((obj as any).extensionType === 'QRCODE' && extKey === 'source') {
+            ext.fieldBinding = patch.value === 'static' ? null : 'qrContent';
+            ext.content ??= '';
+          }
+          if ((obj as any).extensionType === 'BARCODE' && extKey === 'source') {
+            ext.fieldBinding = patch.value === 'static' ? null : 'barcodeContent';
+            ext.content ??= '';
+          }
+          shouldRefreshVisual = Boolean((obj as any).extensionType);
+        } else {
+          obj.set(patch.key as any, patch.value);
+        }
+      }
+
+      if (shouldRefreshVisual) {
+        await refreshExtendedObject(obj);
+      } else {
+        obj.setCoords();
+        core.fabricCanvas.renderAll();
+      }
+    } finally {
+      historySuppression--;
+    }
+
+    selectionVersion.value++;
+    commitHistory();
+  }
+
   function normalizePreviewDataValue(field: string, value: unknown): unknown {
     if (PRICE_BINDABLE_FIELDS.includes(field as PriceBindableField) || field === 'discount') {
       const numeric = Number(value);
@@ -1753,8 +1902,8 @@ export const useEditorStore = defineStore('editor', () => {
     if (type === 'PRICE') return (ext?.fieldBinding ?? 'price') === field;
     if (type === 'DISCOUNT') return field === 'discount';
     if (type === 'IMAGE') return ext?.source === 'dynamic' && ext?.fieldBinding === field;
-    if (type === 'QRCODE') return field === 'qrContent';
-    if (type === 'BARCODE') return field === 'barcodeContent';
+    if (type === 'QRCODE') return (ext?.source ?? 'dynamic') === 'dynamic' && (ext?.fieldBinding ?? 'qrContent') === field;
+    if (type === 'BARCODE') return (ext?.source ?? 'dynamic') === 'dynamic' && (ext?.fieldBinding ?? 'barcodeContent') === field;
     return false;
   }
 
@@ -1782,6 +1931,7 @@ export const useEditorStore = defineStore('editor', () => {
     }
 
     selectionVersion.value++;
+    commitHistory();
   }
 
   async function loadTemplate(json: FabricJSON): Promise<void> {
@@ -2278,6 +2428,7 @@ export const useEditorStore = defineStore('editor', () => {
     isActiveSelectionLocked,
     drawableObjectCount,
     layerEntries,
+    selectionVersion,
     initEditor,
     loadTemplate,
     getPalette,
@@ -2296,6 +2447,7 @@ export const useEditorStore = defineStore('editor', () => {
     applyRecognizedPriceTagTemplate,
     clearCanvasObjects,
     updateObjectProp,
+    updateObjectPropsBatch,
     updatePreviewDataField,
     undo,
     redo,

@@ -20,6 +20,9 @@ export interface VisualBounds {
 const MIN_QR_MODULE_PIXELS = 2;
 const MIN_BARCODE_MODULE_PIXELS = 1.5;
 const LONG_BARCODE_CONTENT_LENGTH = 32;
+const BARCODE_QUIET_ZONE_MIN_PX = 6;
+const BARCODE_VERTICAL_PADDING = 2;
+const DEFAULT_FONT_FAMILY = 'AlibabaPuHuiTi';
 
 const CODE128_PATTERNS = [
   '212222', '222122', '222221', '121223', '121322', '131222', '122213', '122312',
@@ -63,6 +66,8 @@ export function createPriceVisual(
 ): fabric.Group {
   const value = formatPrice(config.previewData?.[ext.fieldBinding ?? 'price'], ext);
   const fittedExt = fitPriceExtension(bounds, ext, value);
+  const fitWarnings = getPriceFitWarnings(bounds, ext, fittedExt);
+  const fontFamily = ext.fontFamily ?? DEFAULT_FONT_FAMILY;
   const baseline = Math.max(2, Math.round((bounds.height - fittedExt.integerStyle.fontSize) / 2));
   const parts: fabric.Object[] = [
     new fabric.Rect({
@@ -86,7 +91,7 @@ export function createPriceVisual(
         fittedExt.integerStyle.fontSize,
         fittedExt.currencyStyle.fontSize
       ),
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily,
       fontSize: fittedExt.currencyStyle.fontSize,
       fontWeight: fittedExt.currencyStyle.fontWeight,
       fill: fittedExt.currencyStyle.color,
@@ -100,7 +105,7 @@ export function createPriceVisual(
   const integer = new fabric.Text(value.integer, {
     left: x,
     top: baseline,
-    fontFamily: 'AlibabaPuHuiTi',
+    fontFamily,
     fontSize: fittedExt.integerStyle.fontSize,
     fontWeight: fittedExt.integerStyle.fontWeight,
     fill: fittedExt.integerStyle.color,
@@ -114,7 +119,7 @@ export function createPriceVisual(
     parts.push(new fabric.Text(value.decimal, {
       left: x,
       top: baseline + fittedExt.decimalStyle.offsetY + Math.max(0, fittedExt.integerStyle.fontSize - fittedExt.decimalStyle.fontSize),
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily,
       fontSize: fittedExt.decimalStyle.fontSize,
       fontWeight: fittedExt.decimalStyle.fontWeight,
       fill: fittedExt.decimalStyle.color,
@@ -123,17 +128,22 @@ export function createPriceVisual(
     }));
   }
 
-  return withExtension(createBoundedGroup(parts, bounds), 'PRICE', fittedExt);
+  return withExtension(createBoundedGroup(parts, bounds), 'PRICE', {
+    ...ext,
+    renderMeta: { ...ext.renderMeta, fitWarnings },
+  });
 }
 
 export function createDiscountVisual(bounds: VisualBounds, value: unknown, ext: DiscountExtension): fabric.Group {
   const text = ext.formatTemplate.replace('{value}', value == null ? '' : String(value));
   const fittedExt = fitDiscountExtension(bounds, text, ext);
+  const fitWarnings = getDiscountFitWarnings(ext, fittedExt);
+  const fontFamily = ext.fontFamily ?? DEFAULT_FONT_FAMILY;
   const textObj = new fabric.Textbox(text, {
     left: 4,
     top: verticalTextTop(bounds.height, fittedExt.fontSize, fittedExt.verticalAlign),
     width: Math.max(0, bounds.width - 8),
-    fontFamily: 'AlibabaPuHuiTi',
+    fontFamily,
     fontSize: fittedExt.fontSize,
     fontWeight: fittedExt.fontWeight,
     fill: fittedExt.textColor,
@@ -158,7 +168,10 @@ export function createDiscountVisual(bounds: VisualBounds, value: unknown, ext: 
       evented: false,
     }),
     textObj,
-  ], bounds), 'DISCOUNT', fittedExt);
+  ], bounds), 'DISCOUNT', {
+    ...ext,
+    renderMeta: { ...ext.renderMeta, fitWarnings },
+  });
 }
 
 export async function createImageVisual(bounds: VisualBounds, ext: ImageExtension): Promise<fabric.Group> {
@@ -213,10 +226,11 @@ export function createQrcodeVisual(bounds: VisualBounds, content: unknown, ext: 
   const qr = QRCode.create(value || ' ', { errorCorrectionLevel: ext.errorCorrection });
   const margin = Math.max(0, Math.round(ext.margin));
   const totalModules = qr.modules.size + margin * 2;
-  const cell = Math.max(1, Math.floor(Math.min(bounds.width, bounds.height) / totalModules));
+  const rawCell = Math.min(bounds.width, bounds.height) / totalModules;
+  const cell = rawCell >= 1 ? Math.floor(rawCell) : Math.max(0.1, rawCell);
   const qrSize = totalModules * cell;
-  const offsetX = Math.round((bounds.width - qrSize) / 2);
-  const offsetY = Math.round((bounds.height - qrSize) / 2);
+  const offsetX = rawCell >= 1 ? Math.round((bounds.width - qrSize) / 2) : (bounds.width - qrSize) / 2;
+  const offsetY = rawCell >= 1 ? Math.round((bounds.height - qrSize) / 2) : (bounds.height - qrSize) / 2;
   const objects: fabric.Object[] = [
     new fabric.Rect({
       left: 0,
@@ -246,9 +260,11 @@ export function createQrcodeVisual(bounds: VisualBounds, content: unknown, ext: 
     }
   }
 
+  const readabilityWarnings = getQrcodeReadabilityWarnings(bounds, content, ext);
   return withExtension(createBoundedGroup(objects, bounds), 'QRCODE', {
     ...ext,
-    readabilityWarnings: getQrcodeReadabilityWarnings(bounds, content, ext),
+    readabilityWarnings,
+    renderMeta: { ...ext.renderMeta, readabilityWarnings },
   });
 }
 
@@ -257,7 +273,10 @@ export function createBarcodeVisual(bounds: VisualBounds, content: unknown, ext:
   const value = sanitizeCode128(rawValue);
   const pattern = encodeCode128B(value || ' ');
   const textHeight = ext.showText ? 12 : 0;
-  const barHeight = Math.max(1, bounds.height - textHeight);
+  const barAreaHeight = Math.max(1, bounds.height - textHeight);
+  const quietZone = getBarcodeQuietZone(bounds.width);
+  const innerWidth = Math.max(1, bounds.width - quietZone * 2);
+  const innerHeight = Math.max(1, barAreaHeight - BARCODE_VERTICAL_PADDING * 2);
   const objects: fabric.Object[] = [
     new fabric.Rect({
       left: 0,
@@ -271,7 +290,12 @@ export function createBarcodeVisual(bounds: VisualBounds, content: unknown, ext:
     }),
   ];
 
-  objects.push(createBarcodeImage(pattern, bounds.width, barHeight, ext));
+  const barcodeImage = createBarcodeImage(pattern, innerWidth, innerHeight, ext);
+  barcodeImage.set({
+    left: quietZone,
+    top: Math.max(0, Math.round((barAreaHeight - innerHeight) / 2)),
+  });
+  objects.push(barcodeImage);
 
   if (ext.showText) {
     const baseFontSize = Math.max(7, Math.min(10, textHeight - 2));
@@ -281,7 +305,7 @@ export function createBarcodeVisual(bounds: VisualBounds, content: unknown, ext:
       : baseFontSize;
     objects.push(new fabric.Textbox(value, {
       left: 0,
-      top: barHeight,
+      top: barAreaHeight,
       originX: 'left',
       originY: 'top',
       width: bounds.width,
@@ -294,9 +318,11 @@ export function createBarcodeVisual(bounds: VisualBounds, content: unknown, ext:
     }));
   }
 
+  const readabilityWarnings = getBarcodeReadabilityWarnings(bounds, rawValue);
   return withExtension(createBoundedGroup(objects, bounds), 'BARCODE', {
     ...ext,
-    readabilityWarnings: getBarcodeReadabilityWarnings(bounds, rawValue),
+    readabilityWarnings,
+    renderMeta: { ...ext.renderMeta, readabilityWarnings },
   });
 }
 
@@ -331,14 +357,16 @@ export function getBarcodeReadabilityWarnings(
   const encodedValue = value || ' ';
   const pattern = encodeCode128B(encodedValue);
   const totalModules = pattern.reduce((sum, n) => sum + n, 0);
-  const modulePixels = bounds.width / totalModules;
+  const quietZone = getBarcodeQuietZone(bounds.width);
+  const innerWidth = Math.max(1, bounds.width - quietZone * 2);
+  const modulePixels = innerWidth / totalModules;
   const warnings: ComponentWarning[] = [];
 
   if (modulePixels < MIN_BARCODE_MODULE_PIXELS) {
     warnings.push({
       code: 'barcode-too-narrow',
       severity: 'warning',
-      message: `条码宽度偏窄：当前最细条约 ${modulePixels.toFixed(1)}px，建议宽度至少 ${Math.ceil(totalModules * MIN_BARCODE_MODULE_PIXELS)}px。`,
+      message: `条码宽度偏窄：当前最细条约 ${modulePixels.toFixed(1)}px，建议宽度至少 ${Math.ceil(totalModules * MIN_BARCODE_MODULE_PIXELS + quietZone * 2)}px。`,
     });
   }
 
@@ -368,7 +396,18 @@ function groupBounds(bounds: VisualBounds): Partial<fabric.GroupProps> {
 }
 
 function createBoundedGroup(objects: fabric.Object[], bounds: VisualBounds): fabric.Group {
-  const group = new fabric.Group(objects, groupBounds(bounds));
+  const normalizedObjects = objects.map((object) => {
+    const width = object.getScaledWidth() || object.width || 0;
+    const height = object.getScaledHeight() || object.height || 0;
+    object.set({
+      originX: 'center',
+      originY: 'center',
+      left: (object.left ?? 0) + width / 2 - bounds.width / 2,
+      top: (object.top ?? 0) + height / 2 - bounds.height / 2,
+    });
+    return object;
+  });
+  const group = new fabric.Group(normalizedObjects, groupBounds(bounds));
   group.set({
     ...groupBounds(bounds),
     width: bounds.width,
@@ -377,9 +416,14 @@ function createBoundedGroup(objects: fabric.Object[], bounds: VisualBounds): fab
   return group;
 }
 
-function measureTextWidth(text: string, fontSize: number, fontWeight: string): number {
+function measureTextWidth(
+  text: string,
+  fontSize: number,
+  fontWeight: string,
+  fontFamily = DEFAULT_FONT_FAMILY
+): number {
   const measured = new fabric.Text(text || ' ', {
-    fontFamily: 'AlibabaPuHuiTi',
+    fontFamily,
     fontSize,
     fontWeight,
   });
@@ -396,11 +440,11 @@ function fitPriceExtension(
   value: ReturnType<typeof formatPrice>
 ): PriceExtension {
   const currencyWidth = value.currency
-    ? measureTextWidth(value.currency, ext.currencyStyle.fontSize, ext.currencyStyle.fontWeight)
+    ? measureTextWidth(value.currency, ext.currencyStyle.fontSize, ext.currencyStyle.fontWeight, ext.fontFamily)
     : 0;
-  const integerWidth = measureTextWidth(value.integer, ext.integerStyle.fontSize, ext.integerStyle.fontWeight);
+  const integerWidth = measureTextWidth(value.integer, ext.integerStyle.fontSize, ext.integerStyle.fontWeight, ext.fontFamily);
   const decimalWidth = value.decimal
-    ? measureTextWidth(value.decimal, ext.decimalStyle.fontSize, ext.decimalStyle.fontWeight)
+    ? measureTextWidth(value.decimal, ext.decimalStyle.fontSize, ext.decimalStyle.fontWeight, ext.fontFamily)
     : 0;
   const contentWidth = currencyWidth + integerWidth + decimalWidth;
   const maxFontHeight = Math.max(
@@ -432,8 +476,21 @@ function fitPriceExtension(
   };
 }
 
+function getPriceFitWarnings(bounds: VisualBounds, ext: PriceExtension, fittedExt: PriceExtension): ComponentWarning[] {
+  const changed = ext.currencyStyle.fontSize !== fittedExt.currencyStyle.fontSize
+    || ext.integerStyle.fontSize !== fittedExt.integerStyle.fontSize
+    || ext.decimalStyle.fontSize !== fittedExt.decimalStyle.fontSize;
+  if (!changed) return [];
+
+  return [{
+    code: 'price-fit-scaled',
+    severity: 'warning',
+    message: `价格内容超出 ${Math.round(bounds.width)}×${Math.round(bounds.height)} 区域，画布临时缩小显示；属性值仍按你的输入保存。`,
+  }];
+}
+
 function fitDiscountExtension(bounds: VisualBounds, text: string, ext: DiscountExtension): DiscountExtension {
-  const textWidth = measureTextWidth(text, ext.fontSize, ext.fontWeight);
+  const textWidth = measureTextWidth(text, ext.fontSize, ext.fontWeight, ext.fontFamily);
   const widthScale = textWidth > 0 ? Math.max(0.1, (bounds.width - 10) / textWidth) : 1;
   const heightScale = ext.fontSize > 0 ? Math.max(0.1, (bounds.height - 4) / (ext.fontSize * 1.2)) : 1;
   const fitScale = Math.min(1, widthScale, heightScale);
@@ -444,6 +501,16 @@ function fitDiscountExtension(bounds: VisualBounds, text: string, ext: DiscountE
     ...ext,
     fontSize: scaleFontSize(ext.fontSize, fitScale, 8),
   };
+}
+
+function getDiscountFitWarnings(ext: DiscountExtension, fittedExt: DiscountExtension): ComponentWarning[] {
+  if (ext.fontSize === fittedExt.fontSize) return [];
+
+  return [{
+    code: 'discount-fit-scaled',
+    severity: 'warning',
+    message: '折扣文字超出容器，画布临时缩小显示；属性值仍按你的输入保存。',
+  }];
 }
 
 function inlineMarkerTop(baselineTop: number, integerFontSize: number, markerFontSize: number): number {
@@ -475,7 +542,7 @@ function addImagePlaceholder(
     left: 4,
     top,
     width: Math.max(1, bounds.width - 8),
-    fontFamily: 'AlibabaPuHuiTi',
+    fontFamily: DEFAULT_FONT_FAMILY,
     fontSize: 10,
     fontWeight: 'bold',
     fill: '#000000',
@@ -487,7 +554,7 @@ function addImagePlaceholder(
     left: 4,
     top: top + 13,
     width: Math.max(1, bounds.width - 8),
-    fontFamily: 'AlibabaPuHuiTi',
+    fontFamily: DEFAULT_FONT_FAMILY,
     fontSize: 8,
     fill: '#000000',
     textAlign: 'center',
@@ -546,6 +613,10 @@ function createBarcodeImage(
     selectable: false,
     evented: false,
   });
+}
+
+function getBarcodeQuietZone(width: number): number {
+  return Math.min(Math.max(BARCODE_QUIET_ZONE_MIN_PX, Math.round(width * 0.04)), Math.max(1, Math.floor(width * 0.18)));
 }
 
 function sanitizeCode128(value: string): string {

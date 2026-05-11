@@ -6,6 +6,7 @@ import type { EditorCore } from '@/core/EditorCore';
 const props = defineProps<{
   width: number;
   height: number;
+  showHeader?: boolean;
 }>();
 
 const canvasRef = ref<HTMLCanvasElement>();
@@ -97,10 +98,11 @@ onUnmounted(() => {
 
 <template>
   <div class="preview-canvas-wrapper">
-    <div class="preview-header">
+    <div v-if="props.showHeader !== false" class="preview-header">
       <span class="preview-title">电子墨水预览</span>
       <span v-if="isRendering" class="preview-badge">渲染中...</span>
     </div>
+    <span v-else-if="isRendering" class="preview-badge floating">渲染中...</span>
     <canvas
       ref="canvasRef"
       :width="props.width"
@@ -112,6 +114,7 @@ onUnmounted(() => {
 
 <style scoped>
 .preview-canvas-wrapper {
+  position: relative;
   border: 1px solid #2a2a2a;
   border-radius: 4px;
   overflow: hidden;
@@ -140,9 +143,19 @@ onUnmounted(() => {
   animation: pulse 1s infinite;
 }
 
+.preview-badge.floating {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(26, 26, 26, 0.76);
+}
+
 .preview-canvas {
   display: block;
-  image-rendering: auto;
+  image-rendering: pixelated;
 }
 
 @keyframes pulse {
