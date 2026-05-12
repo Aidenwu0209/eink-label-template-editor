@@ -16,7 +16,7 @@ export default defineConfig({
         target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
         changeOrigin: true,
       },
-      '/ocr': {
+      '^/ocr(?:/|$)': {
         target: process.env.VITE_OCR_API_TARGET ?? process.env.VITE_API_TARGET ?? 'http://localhost:8000',
         changeOrigin: true,
       },
