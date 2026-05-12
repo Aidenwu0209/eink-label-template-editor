@@ -115,6 +115,9 @@ const screenInfo = computed(() => {
   const modeLabel = config.mode === 'edit' ? t('editor.modeEdit') : t('editor.modeCreate');
   return `${modeLabel} | ${screenDisplayName.value}`;
 });
+const documentTemplateName = computed(() => config.templateName || t('editor.unnamedTemplate'));
+const documentSummaryDetail = computed(() => `${screenInfo.value} · ${config.canvas.width} × ${config.canvas.height} px`);
+const documentSummaryTitle = computed(() => `${documentTemplateName.value}\n${documentSummaryDetail.value}`);
 const canvasSizeValue = computed(() => `${config.canvas.width}x${config.canvas.height}`);
 const isCurrentCanvasSizePreset = computed(() => {
   return CANVAS_SIZE_PRESETS.some((preset) => (
@@ -172,6 +175,28 @@ const collapsedToolShortcuts = computed(() => {
 });
 
 const saveMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null);
+function compactLocaleLabel(locale: LocaleCode): string {
+  const labels: Record<LocaleCode, string> = {
+    'zh-CN': '中文',
+    en: 'EN',
+    de: 'DE',
+    fr: 'FR',
+    es: 'ES',
+    ru: 'RU',
+  };
+  return labels[locale];
+}
+
+function compactMarketLabel(market: MarketCode): string {
+  const currency = getMarketProfile(market).price.currencySymbol;
+  if (selectedLocale.value === 'zh-CN') {
+    return market === 'CN' ? `中国 · ${currency}` : `欧洲 · ${currency}`;
+  }
+  return `${market} · ${currency}`;
+}
+
+const selectedLocaleTitle = computed(() => `${t('common.language')}: ${t(`locale.${selectedLocale.value}`)}`);
+const selectedMarketTitle = computed(() => `${t('market.label')}: ${t(`market.${selectedMarket.value.toLowerCase()}`)}`);
 const TOOL_MARKS: Record<ToolKind, string> = {
   RECT: '□',
   LINE: '/',
@@ -998,9 +1023,9 @@ onUnmounted(() => {
           <span class="toolbar-subtitle">{{ t('editor.subtitle') }}</span>
         </div>
       </div>
-      <div class="document-tabs">
-        <span class="document-tab active">{{ config.templateName || t('editor.unnamedTemplate') }}</span>
-        <span class="screen-info">{{ screenInfo }}</span>
+      <div class="document-summary" :title="documentSummaryTitle" aria-label="Current template">
+        <span class="document-name">{{ documentTemplateName }}</span>
+        <span class="document-detail">{{ documentSummaryDetail }}</span>
       </div>
       <div class="template-actions" aria-label="Template shortcuts">
         <button class="toolbar-btn smart-import" :title="t('editor.smartImportTitle')" @click="showSmartImportDialog = true">{{ t('editor.smartImport') }}</button>
@@ -1062,14 +1087,14 @@ onUnmounted(() => {
       </div>
       <div class="toolbar-right">
         <div class="regional-controls" aria-label="Language and market">
-          <select v-model="selectedLocale" class="regional-select" :title="t('common.language')">
+          <select v-model="selectedLocale" class="regional-select regional-select-locale" :title="selectedLocaleTitle">
             <option v-for="locale in LOCALES" :key="locale" :value="locale">
-              {{ t(`locale.${locale}`) }}
+              {{ compactLocaleLabel(locale) }}
             </option>
           </select>
-          <select v-model="selectedMarket" class="regional-select" :title="t('market.label')">
+          <select v-model="selectedMarket" class="regional-select regional-select-market" :title="selectedMarketTitle">
             <option v-for="market in MARKETS" :key="market" :value="market">
-              {{ t(`market.${market.toLowerCase()}`) }}
+              {{ compactMarketLabel(market) }}
             </option>
           </select>
         </div>
@@ -1570,29 +1595,43 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-.document-tabs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.document-summary {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 1 156px;
+  max-width: clamp(116px, 12vw, 172px);
+  height: 36px;
   margin: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 11px 11px 7px 7px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.document-tab {
+.document-name,
+.document-detail {
   min-width: 0;
-  max-width: clamp(92px, 10vw, 150px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 7px 10px;
-  border: 1px solid var(--line-soft);
-  border-radius: 10px 10px 6px 6px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+}
+
+.document-name {
   color: var(--text-strong);
   font-size: 12px;
+  font-weight: 720;
+  line-height: 1.1;
+}
+
+.document-detail {
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: 9px;
   font-weight: 650;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  line-height: 1;
 }
 
 .toolbar-right {
@@ -1689,28 +1728,34 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 4px;
-  max-width: min(24vw, 244px);
+  gap: 2px;
+  max-width: 186px;
   overflow: hidden;
-  padding: 3px;
+  padding: 2px;
   border: 1px solid rgba(216, 183, 96, 0.16);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.045);
 }
 
 .regional-select {
-  height: 30px;
-  min-width: 70px;
-  max-width: 112px;
-  padding: 0 22px 0 8px;
+  height: 28px;
+  padding: 0 19px 0 7px;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-strong);
   background: rgba(8, 9, 11, 0.64);
   border: 1px solid var(--line-soft);
-  border-radius: 8px;
+  border-radius: 7px;
   font-size: 11px;
   font-weight: 750;
+}
+
+.regional-select-locale {
+  width: 74px;
+}
+
+.regional-select-market {
+  width: 102px;
 }
 
 .regional-select:focus {
@@ -1766,19 +1811,6 @@ onUnmounted(() => {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid var(--line-faint);
-}
-
-.screen-info {
-  max-width: 145px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 6px 9px;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid var(--line-faint);
-  border-radius: 999px;
-  white-space: nowrap;
 }
 
 .toolbar-btn {
@@ -2928,8 +2960,9 @@ onUnmounted(() => {
     min-width: 118px;
   }
 
-  .document-tabs {
-    margin: 0;
+  .document-summary {
+    flex-basis: 128px;
+    max-width: 138px;
   }
 
   .template-actions {
@@ -2937,15 +2970,19 @@ onUnmounted(() => {
   }
 
   .regional-controls {
-    max-width: 28vw;
+    max-width: 174px;
+  }
+
+  .regional-select-locale {
+    width: 68px;
+  }
+
+  .regional-select-market {
+    width: 96px;
   }
 
   .zoom-controls {
     max-width: 30vw;
-  }
-
-  .screen-info {
-    display: none;
   }
 
   .stage-hint {
@@ -2959,7 +2996,7 @@ onUnmounted(() => {
 
 @media (max-width: 820px) {
   .toolbar-subtitle,
-  .document-tabs {
+  .document-summary {
     display: none;
   }
 
@@ -2972,7 +3009,15 @@ onUnmounted(() => {
   }
 
   .regional-controls {
-    max-width: 42vw;
+    max-width: 150px;
+  }
+
+  .regional-select-locale {
+    width: 58px;
+  }
+
+  .regional-select-market {
+    width: 84px;
   }
 
   .zoom-controls {
