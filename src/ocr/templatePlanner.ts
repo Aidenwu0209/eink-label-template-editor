@@ -452,11 +452,12 @@ function getTemplateLineItems(tag: RecognizedPriceTag): OcrLineItem[] {
 
 function ocrLineBounds(ctx: PlanContext, tag: RecognizedPriceTag, line: OcrLineItem): TemplateBounds {
   const source = getSourceImage(tag);
+  const content = getSourceContentBounds(tag, source);
   const canvasWidth = ctx.config.canvas.width;
   const canvasHeight = ctx.config.canvas.height;
-  const scale = Math.min(canvasWidth / source.width, canvasHeight / source.height);
-  const offsetX = (canvasWidth - source.width * scale) / 2;
-  const offsetY = (canvasHeight - source.height * scale) / 2;
+  const scale = Math.min(canvasWidth / content.width, canvasHeight / content.height);
+  const offsetX = (canvasWidth - content.width * scale) / 2 - content.left * scale;
+  const offsetY = (canvasHeight - content.height * scale) / 2 - content.top * scale;
   const minWidth = getMinimumLineWidth(ctx, line.role);
   const minHeight = getMinimumLineHeight(ctx, line.role);
   const width = Math.max(minWidth, line.box.width * scale);
@@ -478,6 +479,36 @@ function getSourceImage(tag: RecognizedPriceTag): { width: number; height: numbe
   return {
     width: Math.max(1, ...items.map((item) => item.box.right)),
     height: Math.max(1, ...items.map((item) => item.box.bottom)),
+  };
+}
+
+function getSourceContentBounds(tag: RecognizedPriceTag, source: { width: number; height: number }): TemplateBounds {
+  const items = getTemplateLineItems(tag).filter((line) => line.includeInTemplate !== false);
+  if (!items.length) {
+    return {
+      left: 0,
+      top: 0,
+      width: source.width,
+      height: source.height,
+    };
+  }
+
+  const left = Math.max(0, Math.min(...items.map((item) => item.box.left)));
+  const top = Math.max(0, Math.min(...items.map((item) => item.box.top)));
+  const right = Math.min(source.width, Math.max(...items.map((item) => item.box.right)));
+  const bottom = Math.min(source.height, Math.max(...items.map((item) => item.box.bottom)));
+  const horizontalPadding = Math.max(4, (right - left) * 0.06);
+  const verticalPadding = Math.max(3, (bottom - top) * 0.10);
+  const paddedLeft = Math.max(0, left - horizontalPadding);
+  const paddedTop = Math.max(0, top - verticalPadding);
+  const paddedRight = Math.min(source.width, right + horizontalPadding);
+  const paddedBottom = Math.min(source.height, bottom + verticalPadding);
+
+  return {
+    left: paddedLeft,
+    top: paddedTop,
+    width: Math.max(1, paddedRight - paddedLeft),
+    height: Math.max(1, paddedBottom - paddedTop),
   };
 }
 

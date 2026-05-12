@@ -1,6 +1,15 @@
 import type { BootConfig } from '@/boot/types';
 
-export type OcrProviderMode = 'auto' | 'browser-local' | 'paddle-api';
+export type OcrProviderMode =
+  | 'auto'
+  | 'browser-local'
+  | 'paddle-api'
+  | 'browser-local-v5'
+  | 'browser-local-vl'
+  | 'paddle-api-v5'
+  | 'paddle-api-vl';
+
+export type OcrEngine = 'pp-ocrv5' | 'paddleocr-vl';
 
 export type OcrPoint = [number, number];
 

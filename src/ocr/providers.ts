@@ -2,7 +2,7 @@ import { decodeCodesFromImage } from './codeDecoder';
 import { extractPriceTagFromOcr } from './fieldExtraction';
 import { preprocessImageForOcr } from './imagePreprocess';
 import { normalizeOcrResponse } from './normalize';
-import type { OcrCodeResults, OcrProviderOptions, OcrProviderRawResult, RecognizedPriceTag } from './types';
+import type { OcrCodeResults, OcrEngine, OcrProviderMode, OcrProviderOptions, OcrProviderRawResult, RecognizedPriceTag } from './types';
 import { translate } from '@/i18n';
 import ortWasmJsepMjsUrl from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.mjs?url';
 import ortWasmJsepWasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url';
@@ -17,11 +17,19 @@ const LOCAL_DET_MODEL_NAME = 'PP-OCRv5_mobile_det';
 const LOCAL_REC_MODEL_NAME = 'PP-OCRv5_mobile_rec';
 const LOCAL_DET_MODEL_FILE = 'PP-OCRv5_mobile_det_onnx.tar';
 const LOCAL_REC_MODEL_FILE = 'PP-OCRv5_mobile_rec_onnx.tar';
+const LOCAL_VL_ENDPOINT = '/ocr/price-tag';
 
 type PaddleOCRModule = typeof import('@paddleocr/paddleocr-js');
 type PaddleOCRInstance = Awaited<ReturnType<PaddleOCRModule['PaddleOCR']['create']>>;
 
 let localOcrPromise: Promise<PaddleOCRInstance> | null = null;
+
+interface ResolvedOcrProvider {
+  mode: OcrProviderMode;
+  runtime: 'browser-local' | 'local-api' | 'paddle-api' | 'auto';
+  engine: OcrEngine;
+  normalizedProvider: OcrProviderRawResult['provider'];
+}
 
 export async function recognizePriceTag(
   file: File,
@@ -29,16 +37,17 @@ export async function recognizePriceTag(
 ): Promise<RecognizedPriceTag> {
   const preprocessed = await preprocessImageForOcr(file);
   const decodedCodes = await decodeCodesFromImage(preprocessed.blob).catch(() => ({}));
+  const provider = resolveProviderMode(options.mode);
 
-  if (options.mode === 'paddle-api') {
-    return runApiRecognition(preprocessed.blob, options, 'paddle-api', decodedCodes);
+  if (provider.runtime === 'paddle-api' || provider.runtime === 'local-api') {
+    return runApiRecognition(preprocessed.blob, options, provider, decodedCodes);
   }
 
-  if (options.mode === 'browser-local') {
-    return runBrowserRecognition(preprocessed.blob, preprocessed, decodedCodes);
+  if (provider.runtime === 'browser-local') {
+    return runBrowserRecognition(preprocessed.blob, preprocessed, provider, decodedCodes);
   }
 
-  const localResult = await runBrowserRecognition(preprocessed.blob, preprocessed, decodedCodes);
+  const localResult = await runBrowserRecognition(preprocessed.blob, preprocessed, provider, decodedCodes);
   const shouldFallback = Boolean(options.apiEndpoint)
     && (
       localResult.confidence < LOCAL_LOW_CONFIDENCE_THRESHOLD
@@ -49,7 +58,11 @@ export async function recognizePriceTag(
   if (!shouldFallback) return localResult;
 
   try {
-    const apiResult = await runApiRecognition(preprocessed.blob, options, 'fallback-api', decodedCodes);
+    const apiResult = await runApiRecognition(preprocessed.blob, options, {
+      ...provider,
+      runtime: 'paddle-api',
+      normalizedProvider: 'fallback-api',
+    }, decodedCodes);
     return {
       ...apiResult,
       warnings: [
@@ -71,6 +84,7 @@ export async function recognizePriceTag(
 async function runBrowserRecognition(
   imageBlob: Blob,
   image: { width: number; height: number },
+  provider: ResolvedOcrProvider,
   decodedCodes: OcrCodeResults
 ): Promise<RecognizedPriceTag> {
   const ocr = await getLocalOcr();
@@ -82,7 +96,7 @@ async function runBrowserRecognition(
     LOCAL_OCR_PREDICT_TIMEOUT_MS,
     translate('ocr.localPredictTimeout')
   );
-  const normalized = normalizeOcrResponse(rawResult, 'browser-local', image);
+  const normalized = normalizeOcrResponse(rawResult, provider.normalizedProvider, image);
   normalized.codes = { ...normalized.codes, ...decodedCodes };
   return resultToRecognizedTag(normalized);
 }
@@ -90,19 +104,26 @@ async function runBrowserRecognition(
 async function runApiRecognition(
   imageBlob: Blob,
   options: OcrProviderOptions,
-  provider: OcrProviderRawResult['provider'] = 'paddle-api',
+  provider: ResolvedOcrProvider,
   decodedCodes: OcrCodeResults = {}
 ): Promise<RecognizedPriceTag> {
-  if (!options.apiEndpoint) {
+  const endpoint = resolveRecognitionEndpoint(options, provider);
+  if (!endpoint) {
     throw new Error(translate('ocr.apiNotConfigured'));
   }
 
   const form = new FormData();
   form.append('image', imageBlob, 'price-tag.png');
   form.append('profile', JSON.stringify(buildProfilePayload(options.config)));
-  form.append('options', JSON.stringify({ task: 'price-tag', normalizeOnly: true }));
+  form.append('options', JSON.stringify({
+    task: 'price-tag',
+    normalizeOnly: true,
+    engine: provider.engine,
+    model: provider.engine,
+    providerMode: provider.mode,
+  }));
 
-  const response = await fetchWithTimeout(options.apiEndpoint, {
+  const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     body: form,
   });
@@ -115,9 +136,52 @@ async function runApiRecognition(
   }
 
   const rawResult = await response.json();
-  const normalized = normalizeOcrResponse(rawResult, provider);
+  const normalized = normalizeOcrResponse(rawResult, provider.normalizedProvider);
   normalized.codes = { ...normalized.codes, ...decodedCodes };
   return resultToRecognizedTag(normalized);
+}
+
+function resolveProviderMode(mode: OcrProviderMode): ResolvedOcrProvider {
+  if (mode === 'browser-local-vl') {
+    return {
+      mode,
+      runtime: 'local-api',
+      engine: 'paddleocr-vl',
+      normalizedProvider: mode,
+    };
+  }
+
+  if (mode === 'paddle-api' || mode === 'paddle-api-v5') {
+    return {
+      mode,
+      runtime: 'paddle-api',
+      engine: 'pp-ocrv5',
+      normalizedProvider: mode,
+    };
+  }
+
+  if (mode === 'paddle-api-vl') {
+    return {
+      mode,
+      runtime: 'paddle-api',
+      engine: 'paddleocr-vl',
+      normalizedProvider: mode,
+    };
+  }
+
+  return {
+    mode,
+    runtime: mode === 'auto' ? 'auto' : 'browser-local',
+    engine: 'pp-ocrv5',
+    normalizedProvider: mode === 'browser-local-v5' ? 'browser-local-v5' : mode,
+  };
+}
+
+function resolveRecognitionEndpoint(options: OcrProviderOptions, provider: ResolvedOcrProvider): string | undefined {
+  if (provider.runtime === 'local-api') {
+    return options.apiEndpoint?.trim() || LOCAL_VL_ENDPOINT;
+  }
+  return options.apiEndpoint?.trim() || undefined;
 }
 
 async function getLocalOcr(): Promise<PaddleOCRInstance> {

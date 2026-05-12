@@ -39,6 +39,8 @@ const LINE_ROLE_OPTIONS: Array<{ value: OcrLineRole; labelKey: string }> = [
   { value: 'customText', labelKey: 'ocr.roleCustomText' },
 ] as const;
 
+const API_PROVIDER_MODES = new Set<OcrProviderMode>(['auto', 'browser-local-vl', 'paddle-api', 'paddle-api-v5', 'paddle-api-vl']);
+
 const PRICE_ROLES = new Set<OcrLineRole>(['price', 'memberPrice', 'originalPrice']);
 type PriceLineRole = 'price' | 'memberPrice' | 'originalPrice';
 type FieldLineRole = Exclude<OcrLineRole, 'barcodeContent' | 'qrContent' | 'customText'>;
@@ -68,6 +70,14 @@ const recognized = ref<RecognizedPriceTag | null>(null);
 const editableValues = ref<Record<string, string>>({});
 const editableLineItems = ref<OcrLineItem[]>([]);
 const activeLineId = ref<string | null>(null);
+const usesApiEndpoint = computed(() => API_PROVIDER_MODES.has(providerMode.value));
+const providerHint = computed(() => {
+  if (providerMode.value === 'browser-local-vl') return t('ocr.providerLocalVlHint');
+  if (providerMode.value === 'paddle-api-vl') return t('ocr.providerApiVlHint');
+  if (providerMode.value === 'paddle-api-v5') return t('ocr.providerApiV5Hint');
+  if (providerMode.value === 'browser-local-v5' || providerMode.value === 'browser-local') return t('ocr.providerLocalV5Hint');
+  return t('ocr.providerAutoHint');
+});
 
 const fieldRows = computed(() => {
   const known = FIELD_DEFS.map((field) => ({
@@ -87,7 +97,7 @@ const recognitionSummary = computed(() => {
   const percent = Math.round(recognized.value.confidence * 100);
   const included = editableLineItems.value.filter((line) => line.includeInTemplate !== false).length;
   return t('ocr.summary', {
-    provider: recognized.value.provider,
+    provider: providerLabel(recognized.value.provider),
     rows: editableLineItems.value.length,
     included,
     confidence: percent,
@@ -150,7 +160,7 @@ async function runRecognition(): Promise<void> {
   isRecognizing.value = true;
   try {
     const endpoint = apiEndpoint.value.trim();
-    if (providerMode.value !== 'browser-local') {
+    if (usesApiEndpoint.value) {
       if (endpoint) {
         localStorage.setItem(OCR_API_STORAGE_KEY, endpoint);
       } else {
@@ -276,6 +286,16 @@ function defaultFieldKeyForRole(role: OcrLineRole, index: number): string | null
 function lineRoleLabel(role: OcrLineRole): string {
   const option = LINE_ROLE_OPTIONS.find((item) => item.value === role);
   return option ? t(option.labelKey) : role;
+}
+
+function providerLabel(provider: RecognizedPriceTag['provider']): string {
+  if (provider === 'auto') return t('ocr.providerAuto');
+  if (provider === 'browser-local' || provider === 'browser-local-v5') return t('ocr.providerLocalV5');
+  if (provider === 'browser-local-vl') return t('ocr.providerLocalVl');
+  if (provider === 'paddle-api' || provider === 'paddle-api-v5') return t('ocr.providerApiV5');
+  if (provider === 'paddle-api-vl') return t('ocr.providerApiVl');
+  if (provider === 'fallback-api') return t('ocr.providerFallbackApiV5');
+  return provider;
 }
 
 function isPriceLineRole(role: OcrLineRole): role is PriceLineRole {
@@ -446,9 +466,12 @@ function overlayBoxStyle(item: OcrLineItem) {
                 <span>{{ t('ocr.provider') }}</span>
                 <select v-model="providerMode">
                   <option value="auto">{{ t('ocr.providerAuto') }}</option>
-                  <option value="browser-local">{{ t('ocr.providerLocal') }}</option>
-                  <option value="paddle-api">{{ t('ocr.providerApi') }}</option>
+                  <option value="browser-local-v5">{{ t('ocr.providerLocalV5') }}</option>
+                  <option value="browser-local-vl">{{ t('ocr.providerLocalVl') }}</option>
+                  <option value="paddle-api-v5">{{ t('ocr.providerApiV5') }}</option>
+                  <option value="paddle-api-vl">{{ t('ocr.providerApiVl') }}</option>
                 </select>
+                <small>{{ providerHint }}</small>
               </label>
 
               <label class="setting-field">
@@ -457,7 +480,7 @@ function overlayBoxStyle(item: OcrLineItem) {
                   v-model="apiEndpoint"
                   type="text"
                   placeholder="/ocr/price-tag"
-                  :disabled="providerMode === 'browser-local'"
+                  :disabled="!usesApiEndpoint"
                 />
               </label>
 
