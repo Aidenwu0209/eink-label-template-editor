@@ -3,7 +3,11 @@ from __future__ import annotations
 import fnmatch
 import json
 import os
+import subprocess
+import sys
 import tempfile
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +44,19 @@ app.add_middleware(
 
 _pp_ocrv5: Any | None = None
 _paddleocr_vl: Any | None = None
+INSTALL_OUTPUT_LIMIT = 120
+INSTALL_ENGINES = {"pp-ocrv5", "paddleocr-vl"}
+_install_lock = threading.Lock()
+_install_job: dict[str, Any] = {
+    "status": "idle",
+    "running": False,
+    "engine": None,
+    "startedAt": None,
+    "finishedAt": None,
+    "exitCode": None,
+    "output": [],
+    "error": "",
+}
 
 
 @app.get("/ocr/health")
@@ -66,6 +83,38 @@ async def ocr_health(engine: str | None = None) -> dict[str, Any]:
         "selectedEngine": engine,
         "engines": engines,
     }
+
+
+@app.post("/ocr/install-models")
+async def start_model_install(engine: str = "pp-ocrv5") -> dict[str, Any]:
+    if engine not in INSTALL_ENGINES:
+        raise HTTPException(status_code=400, detail=f"Unsupported OCR engine: {engine}")
+
+    with _install_lock:
+        if _install_job["running"]:
+            return install_status_snapshot_locked()
+        _install_job.update({
+            "status": "running",
+            "running": True,
+            "engine": engine,
+            "startedAt": now_iso(),
+            "finishedAt": None,
+            "exitCode": None,
+            "output": [f"Starting local OCR model install for {engine}."],
+            "error": "",
+        })
+
+    thread = threading.Thread(target=run_model_install_job, args=(engine,), daemon=True)
+    thread.start()
+
+    with _install_lock:
+        return install_status_snapshot_locked()
+
+
+@app.get("/ocr/install-models/status")
+async def model_install_status() -> dict[str, Any]:
+    with _install_lock:
+        return install_status_snapshot_locked()
 
 
 @app.post("/ocr/price-tag")
@@ -227,6 +276,83 @@ def build_engine_health(
         "ready": all(item["ready"] for item in directory_checks),
         "checks": directory_checks,
     }
+
+
+def run_model_install_job(engine: str) -> None:
+    cmd = [
+        sys.executable,
+        str(PROJECT_ROOT / "scripts" / "ocr-service" / "install_models.py"),
+        "--engine",
+        engine,
+    ]
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    try:
+        process = subprocess.Popen(
+            cmd,
+            cwd=PROJECT_ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            append_install_output(line.rstrip())
+        exit_code = process.wait()
+        with _install_lock:
+            _install_job.update({
+                "status": "succeeded" if exit_code == 0 else "failed",
+                "running": False,
+                "finishedAt": now_iso(),
+                "exitCode": exit_code,
+            })
+            if exit_code == 0:
+                append_install_output_locked("Local OCR model install completed.")
+            else:
+                _install_job["error"] = f"Install process exited with code {exit_code}."
+    except Exception as exc:
+        with _install_lock:
+            _install_job.update({
+                "status": "failed",
+                "running": False,
+                "finishedAt": now_iso(),
+                "exitCode": None,
+                "error": str(exc),
+            })
+            append_install_output_locked(f"Install failed: {exc}")
+
+
+def append_install_output(line: str) -> None:
+    with _install_lock:
+        append_install_output_locked(line)
+
+
+def append_install_output_locked(line: str) -> None:
+    if not line:
+        return
+    output = _install_job.setdefault("output", [])
+    output.append(line)
+    del output[:-INSTALL_OUTPUT_LIMIT]
+
+
+def install_status_snapshot_locked() -> dict[str, Any]:
+    output = list(_install_job.get("output", []))[-INSTALL_OUTPUT_LIMIT:]
+    return {
+        "status": _install_job.get("status", "idle"),
+        "running": bool(_install_job.get("running")),
+        "engine": _install_job.get("engine"),
+        "startedAt": _install_job.get("startedAt"),
+        "finishedAt": _install_job.get("finishedAt"),
+        "exitCode": _install_job.get("exitCode"),
+        "error": _install_job.get("error") or "",
+        "outputTail": "\n".join(output),
+    }
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def inspect_model_dir(label: str, path: Path, required_any: tuple[str, ...]) -> dict[str, Any]:

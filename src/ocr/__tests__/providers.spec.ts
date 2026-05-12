@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildOcrRequestOptions, checkLocalOcrHealth, recognizePreparedPriceTag, resolveProviderMode, resolveRecognitionEndpoint } from '../providers';
+import { buildOcrRequestOptions, checkLocalOcrHealth, getLocalOcrModelInstallStatus, recognizePreparedPriceTag, resolveProviderMode, resolveRecognitionEndpoint, startLocalOcrModelInstall } from '../providers';
 import type { OcrProviderMode, OcrProviderOptions } from '../types';
 import { ScreenType } from '@/screen/types';
 import { MARKET_PROFILES } from '@/i18n/market';
@@ -70,6 +70,22 @@ function okHealthResponse(ready: boolean) {
         checks: [],
       },
     },
+  }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function okInstallStatusResponse(status: string, engine = 'pp-ocrv5') {
+  return new Response(JSON.stringify({
+    status,
+    running: status === 'running',
+    engine,
+    startedAt: '2026-05-12T00:00:00Z',
+    finishedAt: null,
+    exitCode: null,
+    error: '',
+    outputTail: `Installing ${engine}`,
   }), {
     status: 200,
     headers: { 'content-type': 'application/json' },
@@ -163,6 +179,27 @@ describe('OCR provider runtime branches', () => {
     }));
 
     await expect(checkLocalOcrHealth('local-v5', { fetch: fetchMock })).rejects.toThrow(/ocr:local|8000|OCR 服务/i);
+  });
+
+  it('starts one-click local model installation for the selected engine', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okInstallStatusResponse('running', 'paddleocr-vl'));
+
+    const status = await startLocalOcrModelInstall('local-vl', { fetch: fetchMock });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/ocr/install-models?engine=paddleocr-vl');
+    expect(status.running).toBe(true);
+    expect(status.engine).toBe('paddleocr-vl');
+  });
+
+  it('polls local model installation status', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okInstallStatusResponse('succeeded', 'pp-ocrv5'));
+
+    const status = await getLocalOcrModelInstallStatus({ fetch: fetchMock });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/ocr/install-models/status');
+    expect(status.status).toBe('succeeded');
   });
 
   it('surfaces local model loading failures with the service detail', async () => {

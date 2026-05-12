@@ -123,6 +123,19 @@ export interface LocalOcrHealthResponse {
   engines: Record<OcrEngine, LocalOcrEngineHealth>;
 }
 
+export type LocalOcrInstallStatusName = 'idle' | 'running' | 'succeeded' | 'failed';
+
+export interface LocalOcrInstallStatus {
+  status: LocalOcrInstallStatusName;
+  running: boolean;
+  engine?: OcrEngine | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  exitCode?: number | null;
+  error?: string;
+  outputTail?: string;
+}
+
 export interface OcrProviderRawResult {
   image?: {
     width: number;

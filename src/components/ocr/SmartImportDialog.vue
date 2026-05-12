@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { BootConfig } from '@/boot/types';
-import { checkLocalOcrHealth, recognizePriceTag } from '@/ocr/providers';
-import type { LocalOcrEngineHealth, LocalOcrHealthResponse, OcrEngine, OcrLineItem, OcrLineRole, OcrProviderMode, RecognizedPriceTag } from '@/ocr/types';
+import { checkLocalOcrHealth, getLocalOcrModelInstallStatus, recognizePriceTag, startLocalOcrModelInstall } from '@/ocr/providers';
+import type { LocalOcrEngineHealth, LocalOcrHealthResponse, LocalOcrInstallStatus, OcrEngine, OcrLineItem, OcrLineRole, OcrProviderMode, RecognizedPriceTag } from '@/ocr/types';
 import type { SmartTemplateKind } from '@/ocr/templatePlanner';
 
 const OCR_API_STORAGE_KEY = 'eink-label-template-editor.ocrApi.v1';
@@ -72,12 +72,18 @@ const editableLineItems = ref<OcrLineItem[]>([]);
 const activeLineId = ref<string | null>(null);
 const abortController = ref<AbortController | null>(null);
 const modelCheckController = ref<AbortController | null>(null);
+const modelInstallController = ref<AbortController | null>(null);
+const modelInstallPollTimer = ref<number | null>(null);
 const isCheckingModels = ref(false);
 const modelHealth = ref<LocalOcrHealthResponse | null>(null);
 const modelHealthError = ref('');
+const modelInstallStatus = ref<LocalOcrInstallStatus | null>(null);
+const modelInstallError = ref('');
 const usesApiEndpoint = computed(() => API_PROVIDER_MODES.has(providerMode.value));
 const canRetry = computed(() => Boolean(errorMessage.value && selectedFile.value && !isRecognizing.value));
 const selectedModelEngine = computed<OcrEngine>(() => engineForProviderMode(providerMode.value));
+const isInstallingModels = computed(() => modelInstallStatus.value?.running === true);
+const canInstallModels = computed(() => !modelHealthError.value && !isCheckingModels.value && !isInstallingModels.value);
 const selectedModelHealth = computed<LocalOcrEngineHealth | null>(() => {
   return modelHealth.value?.engines[selectedModelEngine.value] ?? null;
 });
@@ -97,6 +103,7 @@ const modelCheckSummary = computed(() => {
     : t('ocr.modelCheckMissing', { model: localModelLabel(selectedModelEngine.value) });
 });
 const modelCheckHint = computed(() => {
+  if (isInstallingModels.value) return t('ocr.modelInstallRunningHint');
   if (modelHealthError.value) return modelHealthError.value;
   const engineHealth = selectedModelHealth.value;
   if (!engineHealth) return t('ocr.modelCheckHint');
@@ -104,6 +111,17 @@ const modelCheckHint = computed(() => {
   return t('ocr.modelCheckMissingHint');
 });
 const modelCheckDetails = computed(() => selectedModelHealth.value?.checks ?? []);
+const modelInstallSummary = computed(() => {
+  if (modelInstallError.value) return modelInstallError.value;
+  const status = modelInstallStatus.value;
+  if (!status || status.status === 'idle') return '';
+  const model = localModelLabel((status.engine as OcrEngine | null) ?? selectedModelEngine.value);
+  if (status.running || status.status === 'running') return t('ocr.modelInstallRunning', { model });
+  if (status.status === 'succeeded') return t('ocr.modelInstallSucceeded', { model });
+  if (status.status === 'failed') return status.error || t('ocr.modelInstallFailed', { model });
+  return '';
+});
+const modelInstallOutput = computed(() => modelInstallStatus.value?.outputTail?.trim() ?? '');
 const providerHint = computed(() => {
   if (providerMode.value === 'local-vl' || providerMode.value === 'browser-local-vl') return t('ocr.providerLocalVlHint');
   if (providerMode.value === 'paddle-api-vl') return t('ocr.providerApiVlHint');
@@ -147,6 +165,7 @@ watch(
       ?? localStorage.getItem(OCR_API_STORAGE_KEY)
       ?? '';
     void checkModelStatus(true);
+    void refreshModelInstallStatus();
   },
   { immediate: true }
 );
@@ -160,6 +179,7 @@ watch(providerMode, () => {
 function closeDialog(): void {
   cancelOngoingRecognition();
   cancelModelCheck();
+  cancelModelInstallPolling();
   emit('close');
 }
 
@@ -284,6 +304,83 @@ function cancelModelCheck(): void {
   modelCheckController.value = null;
   isCheckingModels.value = false;
 }
+
+async function installSelectedModel(): Promise<void> {
+  cancelModelInstallPolling();
+  const controller = new AbortController();
+  modelInstallController.value = controller;
+  modelInstallError.value = '';
+  errorMessage.value = '';
+
+  try {
+    const status = await startLocalOcrModelInstall(providerMode.value, {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted) return;
+    modelInstallStatus.value = status;
+    scheduleModelInstallPoll();
+  } catch (err) {
+    if (controller.signal.aborted) return;
+    modelInstallError.value = err instanceof Error ? err.message : String(err);
+    errorMessage.value = modelInstallError.value;
+  } finally {
+    if (modelInstallController.value === controller) {
+      modelInstallController.value = null;
+    }
+  }
+}
+
+async function refreshModelInstallStatus(): Promise<void> {
+  const controller = new AbortController();
+  modelInstallController.value = controller;
+  try {
+    const status = await getLocalOcrModelInstallStatus({
+      signal: controller.signal,
+      requestTimeoutMs: 4_000,
+    });
+    if (controller.signal.aborted) return;
+    modelInstallStatus.value = status;
+    if (status.running) {
+      scheduleModelInstallPoll();
+    }
+  } catch {
+    if (!controller.signal.aborted) {
+      modelInstallStatus.value = null;
+    }
+  } finally {
+    if (modelInstallController.value === controller) {
+      modelInstallController.value = null;
+    }
+  }
+}
+
+function scheduleModelInstallPoll(): void {
+  clearModelInstallPollTimer();
+  modelInstallPollTimer.value = window.setTimeout(async () => {
+    await refreshModelInstallStatus();
+    if (modelInstallStatus.value?.status === 'succeeded') {
+      void checkModelStatus(true);
+    }
+  }, 2000);
+}
+
+function cancelModelInstallPolling(): void {
+  clearModelInstallPollTimer();
+  modelInstallController.value?.abort();
+  modelInstallController.value = null;
+}
+
+function clearModelInstallPollTimer(): void {
+  if (modelInstallPollTimer.value == null) return;
+  window.clearTimeout(modelInstallPollTimer.value);
+  modelInstallPollTimer.value = null;
+}
+
+onBeforeUnmount(() => {
+  cancelOngoingRecognition();
+  cancelModelCheck();
+  cancelModelInstallPolling();
+});
 
 function valuesFromRecognized(result: RecognizedPriceTag): Record<string, string> {
   const values: Record<string, string> = {};
@@ -618,9 +715,24 @@ function overlayBoxStyle(item: OcrLineItem) {
                 <strong>{{ modelCheckSummary }}</strong>
                 <small>{{ modelCheckHint }}</small>
               </div>
-              <button class="ghost-btn model-check-btn" type="button" :disabled="isCheckingModels" @click="checkModelStatus(false)">
-                {{ isCheckingModels ? t('ocr.modelCheckCheckingShort') : t('ocr.modelCheckAction') }}
-              </button>
+              <div class="model-check-actions">
+                <button class="ghost-btn model-check-btn" type="button" :disabled="isCheckingModels" @click="checkModelStatus(false)">
+                  {{ isCheckingModels ? t('ocr.modelCheckCheckingShort') : t('ocr.modelCheckAction') }}
+                </button>
+                <button
+                  class="primary-btn model-check-btn"
+                  type="button"
+                  :disabled="!canInstallModels"
+                  :title="modelHealthError ? t('ocr.modelInstallNeedService') : t('ocr.modelInstallTitle')"
+                  @click="installSelectedModel"
+                >
+                  {{ isInstallingModels ? t('ocr.modelInstallRunningShort') : t('ocr.modelInstallAction') }}
+                </button>
+              </div>
+              <div v-if="modelInstallSummary" class="model-install-status">
+                <strong>{{ modelInstallSummary }}</strong>
+                <pre v-if="modelInstallOutput">{{ modelInstallOutput }}</pre>
+              </div>
               <div v-if="modelCheckDetails.length" class="model-check-details">
                 <span
                   v-for="item in modelCheckDetails"
@@ -1050,7 +1162,43 @@ function overlayBoxStyle(item: OcrLineItem) {
 
 .model-check-btn:disabled {
   opacity: 0.55;
-  cursor: wait;
+  cursor: not-allowed;
+}
+
+.model-check-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-install-status {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 7px 8px;
+  color: var(--text-muted);
+  background: rgba(7, 8, 10, 0.32);
+  border: 1px solid var(--line-faint);
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.model-install-status strong {
+  display: block;
+  color: var(--text-main);
+  font-size: 12px;
+}
+
+.model-install-status pre {
+  max-height: 78px;
+  margin: 5px 0 0;
+  overflow: auto;
+  color: var(--text-faint);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 10px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .model-check-details {

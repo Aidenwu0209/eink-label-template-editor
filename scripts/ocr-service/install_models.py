@@ -56,6 +56,12 @@ def main() -> int:
     parser.add_argument("--skip-lfs-check", action="store_true")
     parser.add_argument("--no-sha256", action="store_true")
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument(
+        "--engine",
+        choices=("all", "pp-ocrv5", "paddleocr-vl"),
+        default="all",
+        help="Install only one OCR engine group instead of every model.",
+    )
     args = parser.parse_args()
 
     if args.model_root != MODEL_ROOT:
@@ -66,6 +72,7 @@ def main() -> int:
         specs = tuple(remapped)
     else:
         specs = MODELS
+    specs = filter_specs_by_engine(specs, args.engine)
 
     if not args.skip_lfs_check:
         require_git_lfs()
@@ -95,6 +102,14 @@ def main() -> int:
 
     print(f"Local OCR models are installed in {args.model_root}")
     return 0
+
+
+def filter_specs_by_engine(specs: tuple[ModelSpec, ...], engine: str) -> tuple[ModelSpec, ...]:
+    if engine == "pp-ocrv5":
+        return tuple(spec for spec in specs if "pp-ocrv5" in spec.target.parts)
+    if engine == "paddleocr-vl":
+        return tuple(spec for spec in specs if "paddleocr-vl" in spec.target.parts)
+    return specs
 
 
 def require_git_lfs() -> None:

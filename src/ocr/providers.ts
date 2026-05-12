@@ -2,7 +2,7 @@ import { decodeCodesFromImage } from './codeDecoder';
 import { extractPriceTagFromOcr } from './fieldExtraction';
 import { preprocessImageForOcr } from './imagePreprocess';
 import { normalizeOcrResponse } from './normalize';
-import type { LocalOcrHealthResponse, OcrCodeResults, OcrEngine, OcrProviderMode, OcrProviderOptions, OcrProviderRawResult, PreprocessedOcrImage, RecognizedPriceTag } from './types';
+import type { LocalOcrHealthResponse, LocalOcrInstallStatus, OcrCodeResults, OcrEngine, OcrProviderMode, OcrProviderOptions, OcrProviderRawResult, PreprocessedOcrImage, RecognizedPriceTag } from './types';
 import { translate } from '@/i18n';
 
 const LOCAL_LOW_CONFIDENCE_THRESHOLD = 0.58;
@@ -10,8 +10,10 @@ const MIN_RELIABLE_ITEM_COUNT = 2;
 const LOCAL_REQUEST_TIMEOUT_MS = 180_000;
 const API_REQUEST_TIMEOUT_MS = 90_000;
 const LOCAL_HEALTH_TIMEOUT_MS = 6_000;
+const LOCAL_INSTALL_TIMEOUT_MS = 10_000;
 const LOCAL_OCR_ENDPOINT = '/ocr/price-tag';
 const LOCAL_OCR_HEALTH_ENDPOINT = '/ocr/health';
+const LOCAL_OCR_INSTALL_ENDPOINT = '/ocr/install-models';
 
 type FetchLike = typeof fetch;
 
@@ -70,6 +72,35 @@ export async function checkLocalOcrHealth(
   }
 
   return await response.json() as LocalOcrHealthResponse;
+}
+
+export async function startLocalOcrModelInstall(
+  mode: OcrProviderMode,
+  options: {
+    signal?: AbortSignal;
+    requestTimeoutMs?: number;
+    fetch?: FetchLike;
+  } = {}
+): Promise<LocalOcrInstallStatus> {
+  const engine = resolveProviderMode(mode).engine;
+  const endpoint = `${LOCAL_OCR_INSTALL_ENDPOINT}?engine=${encodeURIComponent(engine)}`;
+  return requestLocalOcrInstallStatus(endpoint, {
+    method: 'POST',
+    headers: { accept: 'application/json' },
+  }, options);
+}
+
+export async function getLocalOcrModelInstallStatus(
+  options: {
+    signal?: AbortSignal;
+    requestTimeoutMs?: number;
+    fetch?: FetchLike;
+  } = {}
+): Promise<LocalOcrInstallStatus> {
+  return requestLocalOcrInstallStatus(`${LOCAL_OCR_INSTALL_ENDPOINT}/status`, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+  }, options);
 }
 
 export async function recognizePreparedPriceTag(
@@ -297,6 +328,39 @@ async function readErrorDetail(response: Response): Promise<string> {
   } catch {
     return '';
   }
+}
+
+async function requestLocalOcrInstallStatus(
+  endpoint: string,
+  init: RequestInit,
+  options: {
+    signal?: AbortSignal;
+    requestTimeoutMs?: number;
+    fetch?: FetchLike;
+  }
+): Promise<LocalOcrInstallStatus> {
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(endpoint, init, options.requestTimeoutMs ?? LOCAL_INSTALL_TIMEOUT_MS, options.signal, options.fetch);
+  } catch (err) {
+    if (isNetworkConnectionFailure(err)) {
+      throw new Error(translate('ocr.localServiceUnavailable'));
+    }
+    throw err;
+  }
+
+  if (!response.ok) {
+    const detail = await readErrorDetail(response);
+    if (response.status === 502) {
+      throw new Error(translate('ocr.localServiceUnavailable'));
+    }
+    throw new Error(translate('ocr.apiRequestFailed', {
+      status: response.status,
+      statusText: detail ? `${response.statusText} - ${detail}` : response.statusText,
+    }));
+  }
+
+  return await response.json() as LocalOcrInstallStatus;
 }
 
 function isNetworkConnectionFailure(err: unknown): boolean {

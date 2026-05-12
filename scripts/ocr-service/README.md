@@ -44,6 +44,12 @@ npm run ocr:local
 
 The Vite dev server proxies `/ocr/price-tag` to `http://localhost:8000`, so the UI can use the default local endpoint.
 
+The Smart Import dialog also calls:
+
+- `GET /ocr/health?engine=pp-ocrv5|paddleocr-vl` to check whether local model files are present.
+- `POST /ocr/install-models?engine=pp-ocrv5|paddleocr-vl` to start a one-click model install for the selected local engine.
+- `GET /ocr/install-models/status` to poll the install status.
+
 Request contract:
 
 - `multipart/form-data`
