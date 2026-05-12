@@ -129,6 +129,28 @@ describe('OCR provider runtime branches', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe('/ocr/price-tag');
   });
 
+  it('explains local OCR service proxy failures as setup problems', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response('Bad Gateway', {
+      status: 502,
+      statusText: 'Bad Gateway',
+      headers: { 'content-type': 'text/plain' },
+    }));
+
+    await expect(recognizePreparedPriceTag(preparedImage, {}, {
+      ...providerOptions,
+      mode: 'local-v5',
+    }, { fetch: fetchMock })).rejects.toThrow(/ocr:local|8000|OCR 服务/i);
+  });
+
+  it('explains local OCR network failures as setup problems', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch'));
+
+    await expect(recognizePreparedPriceTag(preparedImage, {}, {
+      ...providerOptions,
+      mode: 'local-vl',
+    }, { fetch: fetchMock })).rejects.toThrow(/ocr:local|8000|OCR 服务/i);
+  });
+
   it('times out stalled API requests with a clear OCR timeout error', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn<typeof fetch>().mockImplementation((_input, init) => new Promise((_resolve, reject) => {

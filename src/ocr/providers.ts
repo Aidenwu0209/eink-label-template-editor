@@ -105,13 +105,24 @@ async function runServiceRecognition(
 
   const timeoutMs = options.requestTimeoutMs
     ?? (provider.runtime === 'local-api' ? LOCAL_REQUEST_TIMEOUT_MS : API_REQUEST_TIMEOUT_MS);
-  const response = await fetchWithTimeout(endpoint, {
-    method: 'POST',
-    body: form,
-  }, timeoutMs, options.signal, services.fetch);
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(endpoint, {
+      method: 'POST',
+      body: form,
+    }, timeoutMs, options.signal, services.fetch);
+  } catch (err) {
+    if (provider.runtime === 'local-api' && isNetworkConnectionFailure(err)) {
+      throw new Error(translate('ocr.localServiceUnavailable'));
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     const detail = await readErrorDetail(response);
+    if (provider.runtime === 'local-api' && response.status === 502) {
+      throw new Error(translate('ocr.localServiceUnavailable'));
+    }
     throw new Error(translate('ocr.apiRequestFailed', {
       status: response.status,
       statusText: detail ? `${response.statusText} - ${detail}` : response.statusText,
@@ -247,6 +258,16 @@ async function readErrorDetail(response: Response): Promise<string> {
   } catch {
     return '';
   }
+}
+
+function isNetworkConnectionFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const message = err.message.toLowerCase();
+  return err.name === 'TypeError'
+    || message.includes('failed to fetch')
+    || message.includes('networkerror')
+    || message.includes('network error')
+    || message.includes('load failed');
 }
 
 function resultToRecognizedTag(result: OcrProviderRawResult): RecognizedPriceTag {
