@@ -241,6 +241,20 @@ npm install
 npm run dev
 ```
 
+Local OCR Smart Import:
+
+```bash
+python3 -m venv .venv-ocr
+source .venv-ocr/bin/activate
+pip install -r scripts/ocr-service/requirements.txt
+npm run ocr:install-models
+npm run ocr:local
+```
+
+The Smart Import dialog uses the local Python OCR service for both Local
+PP-OCRv5 and Local PaddleOCR-VL. Model files live under
+`runtime/ocr-models/` and large weights are tracked with Git LFS.
+
 Type check:
 
 ```bash

@@ -2,6 +2,8 @@ import type { BootConfig } from '@/boot/types';
 
 export type OcrProviderMode =
   | 'auto'
+  | 'local-v5'
+  | 'local-vl'
   | 'browser-local'
   | 'paddle-api'
   | 'browser-local-v5'

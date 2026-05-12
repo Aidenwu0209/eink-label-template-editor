@@ -241,6 +241,20 @@ npm install
 npm run dev
 ```
 
+本地 OCR 智能导入：
+
+```bash
+python3 -m venv .venv-ocr
+source .venv-ocr/bin/activate
+pip install -r scripts/ocr-service/requirements.txt
+npm run ocr:install-models
+npm run ocr:local
+```
+
+智能导入里的“本地 PP-OCRv5”和“本地 PaddleOCR-VL”都会调用同机
+Python OCR 服务。模型文件放在 `runtime/ocr-models/`，大模型权重通过
+Git LFS 管理。
+
 类型检查：
 
 ```bash

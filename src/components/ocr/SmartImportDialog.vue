@@ -39,7 +39,7 @@ const LINE_ROLE_OPTIONS: Array<{ value: OcrLineRole; labelKey: string }> = [
   { value: 'customText', labelKey: 'ocr.roleCustomText' },
 ] as const;
 
-const API_PROVIDER_MODES = new Set<OcrProviderMode>(['auto', 'browser-local-vl', 'paddle-api', 'paddle-api-v5', 'paddle-api-vl']);
+const API_PROVIDER_MODES = new Set<OcrProviderMode>(['auto', 'paddle-api', 'paddle-api-v5', 'paddle-api-vl']);
 
 const PRICE_ROLES = new Set<OcrLineRole>(['price', 'memberPrice', 'originalPrice']);
 type PriceLineRole = 'price' | 'memberPrice' | 'originalPrice';
@@ -72,10 +72,10 @@ const editableLineItems = ref<OcrLineItem[]>([]);
 const activeLineId = ref<string | null>(null);
 const usesApiEndpoint = computed(() => API_PROVIDER_MODES.has(providerMode.value));
 const providerHint = computed(() => {
-  if (providerMode.value === 'browser-local-vl') return t('ocr.providerLocalVlHint');
+  if (providerMode.value === 'local-vl' || providerMode.value === 'browser-local-vl') return t('ocr.providerLocalVlHint');
   if (providerMode.value === 'paddle-api-vl') return t('ocr.providerApiVlHint');
   if (providerMode.value === 'paddle-api-v5') return t('ocr.providerApiV5Hint');
-  if (providerMode.value === 'browser-local-v5' || providerMode.value === 'browser-local') return t('ocr.providerLocalV5Hint');
+  if (providerMode.value === 'local-v5' || providerMode.value === 'browser-local-v5' || providerMode.value === 'browser-local') return t('ocr.providerLocalV5Hint');
   return t('ocr.providerAutoHint');
 });
 
@@ -290,8 +290,8 @@ function lineRoleLabel(role: OcrLineRole): string {
 
 function providerLabel(provider: RecognizedPriceTag['provider']): string {
   if (provider === 'auto') return t('ocr.providerAuto');
-  if (provider === 'browser-local' || provider === 'browser-local-v5') return t('ocr.providerLocalV5');
-  if (provider === 'browser-local-vl') return t('ocr.providerLocalVl');
+  if (provider === 'local-v5' || provider === 'browser-local' || provider === 'browser-local-v5') return t('ocr.providerLocalV5');
+  if (provider === 'local-vl' || provider === 'browser-local-vl') return t('ocr.providerLocalVl');
   if (provider === 'paddle-api' || provider === 'paddle-api-v5') return t('ocr.providerApiV5');
   if (provider === 'paddle-api-vl') return t('ocr.providerApiVl');
   if (provider === 'fallback-api') return t('ocr.providerFallbackApiV5');
@@ -466,8 +466,8 @@ function overlayBoxStyle(item: OcrLineItem) {
                 <span>{{ t('ocr.provider') }}</span>
                 <select v-model="providerMode">
                   <option value="auto">{{ t('ocr.providerAuto') }}</option>
-                  <option value="browser-local-v5">{{ t('ocr.providerLocalV5') }}</option>
-                  <option value="browser-local-vl">{{ t('ocr.providerLocalVl') }}</option>
+                  <option value="local-v5">{{ t('ocr.providerLocalV5') }}</option>
+                  <option value="local-vl">{{ t('ocr.providerLocalVl') }}</option>
                   <option value="paddle-api-v5">{{ t('ocr.providerApiV5') }}</option>
                   <option value="paddle-api-vl">{{ t('ocr.providerApiVl') }}</option>
                 </select>

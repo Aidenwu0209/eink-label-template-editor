@@ -3,3 +3,4 @@ uvicorn[standard]>=0.32.0
 python-multipart>=0.0.12
 pillow>=11.0.0
 paddleocr>=3.0.0
+huggingface_hub>=0.25.0

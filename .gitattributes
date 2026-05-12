@@ -1,0 +1,4 @@
+runtime/ocr-models/** filter=lfs diff=lfs merge=lfs -text
+runtime/ocr-models/**/*.md -filter -diff -merge text
+runtime/ocr-models/**/.gitkeep -filter -diff -merge text
+runtime/ocr-models/SHA256SUMS -filter -diff -merge text
