@@ -70,7 +70,9 @@ const recognized = ref<RecognizedPriceTag | null>(null);
 const editableValues = ref<Record<string, string>>({});
 const editableLineItems = ref<OcrLineItem[]>([]);
 const activeLineId = ref<string | null>(null);
+const abortController = ref<AbortController | null>(null);
 const usesApiEndpoint = computed(() => API_PROVIDER_MODES.has(providerMode.value));
+const canRetry = computed(() => Boolean(errorMessage.value && selectedFile.value && !isRecognizing.value));
 const providerHint = computed(() => {
   if (providerMode.value === 'local-vl' || providerMode.value === 'browser-local-vl') return t('ocr.providerLocalVlHint');
   if (providerMode.value === 'paddle-api-vl') return t('ocr.providerApiVlHint');
@@ -118,6 +120,7 @@ watch(
 );
 
 function closeDialog(): void {
+  cancelOngoingRecognition();
   emit('close');
 }
 
@@ -126,6 +129,7 @@ function triggerFilePicker(): void {
 }
 
 function handleFileChange(event: Event): void {
+  cancelOngoingRecognition();
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0] ?? null;
   errorMessage.value = '';
@@ -150,6 +154,7 @@ function handleFileChange(event: Event): void {
 }
 
 async function runRecognition(): Promise<void> {
+  if (isRecognizing.value) return;
   const file = selectedFile.value;
   if (!file) {
     errorMessage.value = t('ocr.uploadFirst');
@@ -158,6 +163,8 @@ async function runRecognition(): Promise<void> {
 
   errorMessage.value = '';
   isRecognizing.value = true;
+  const controller = new AbortController();
+  abortController.value = controller;
   try {
     const endpoint = apiEndpoint.value.trim();
     if (usesApiEndpoint.value) {
@@ -171,16 +178,38 @@ async function runRecognition(): Promise<void> {
       mode: providerMode.value,
       apiEndpoint: endpoint || undefined,
       config: props.config,
+      signal: controller.signal,
     });
+    if (controller.signal.aborted) return;
     recognized.value = result;
     editableValues.value = valuesFromRecognized(result);
     editableLineItems.value = cloneLineItems(result);
     activeLineId.value = editableLineItems.value[0]?.id ?? null;
   } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
+    if (abortController.value === controller) {
+      errorMessage.value = controller.signal.aborted
+        ? t('ocr.cancelled')
+        : err instanceof Error ? err.message : String(err);
+    }
   } finally {
-    isRecognizing.value = false;
+    if (abortController.value === controller) {
+      abortController.value = null;
+      isRecognizing.value = false;
+    }
   }
+}
+
+function cancelRecognition(): void {
+  if (!isRecognizing.value) return;
+  abortController.value?.abort();
+  errorMessage.value = t('ocr.cancelled');
+  isRecognizing.value = false;
+}
+
+function cancelOngoingRecognition(): void {
+  abortController.value?.abort();
+  abortController.value = null;
+  isRecognizing.value = false;
 }
 
 function valuesFromRecognized(result: RecognizedPriceTag): Record<string, string> {
@@ -500,7 +529,10 @@ function overlayBoxStyle(item: OcrLineItem) {
 
             <div class="run-row">
               <button class="primary-btn" type="button" :disabled="isRecognizing || !selectedFile" @click="runRecognition">
-                {{ isRecognizing ? t('ocr.recognizing') : t('ocr.start') }}
+                {{ isRecognizing ? t('ocr.recognizing') : canRetry ? t('common.retry') : t('ocr.start') }}
+              </button>
+              <button v-if="isRecognizing" class="ghost-btn" type="button" @click="cancelRecognition">
+                {{ t('ocr.cancelRecognition') }}
               </button>
               <span class="recognition-summary">{{ recognitionSummary }}</span>
             </div>

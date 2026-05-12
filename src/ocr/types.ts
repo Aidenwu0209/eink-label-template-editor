@@ -94,6 +94,8 @@ export interface OcrProviderOptions {
   mode: OcrProviderMode;
   apiEndpoint?: string;
   config: BootConfig;
+  signal?: AbortSignal;
+  requestTimeoutMs?: number;
 }
 
 export interface OcrProviderRawResult {

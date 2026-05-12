@@ -2,7 +2,7 @@ import { decodeCodesFromImage } from './codeDecoder';
 import { extractPriceTagFromOcr } from './fieldExtraction';
 import { preprocessImageForOcr } from './imagePreprocess';
 import { normalizeOcrResponse } from './normalize';
-import type { OcrCodeResults, OcrEngine, OcrProviderMode, OcrProviderOptions, OcrProviderRawResult, RecognizedPriceTag } from './types';
+import type { OcrCodeResults, OcrEngine, OcrProviderMode, OcrProviderOptions, OcrProviderRawResult, PreprocessedOcrImage, RecognizedPriceTag } from './types';
 import { translate } from '@/i18n';
 
 const LOCAL_LOW_CONFIDENCE_THRESHOLD = 0.58;
@@ -10,6 +10,12 @@ const MIN_RELIABLE_ITEM_COUNT = 2;
 const LOCAL_REQUEST_TIMEOUT_MS = 180_000;
 const API_REQUEST_TIMEOUT_MS = 90_000;
 const LOCAL_OCR_ENDPOINT = '/ocr/price-tag';
+
+type FetchLike = typeof fetch;
+
+export interface OcrRecognitionServices {
+  fetch?: FetchLike;
+}
 
 export interface ResolvedOcrProvider {
   mode: OcrProviderMode;
@@ -24,10 +30,19 @@ export async function recognizePriceTag(
 ): Promise<RecognizedPriceTag> {
   const preprocessed = await preprocessImageForOcr(file);
   const decodedCodes = await decodeCodesFromImage(preprocessed.blob).catch(() => ({}));
+  return recognizePreparedPriceTag(preprocessed, decodedCodes, options);
+}
+
+export async function recognizePreparedPriceTag(
+  preprocessed: Pick<PreprocessedOcrImage, 'blob' | 'width' | 'height'>,
+  decodedCodes: OcrCodeResults,
+  options: OcrProviderOptions,
+  services: OcrRecognitionServices = {}
+): Promise<RecognizedPriceTag> {
   const provider = resolveProviderMode(options.mode);
 
   if (provider.runtime === 'paddle-api' || provider.runtime === 'local-api') {
-    return runServiceRecognition(preprocessed.blob, options, provider, decodedCodes, preprocessed);
+    return runServiceRecognition(preprocessed.blob, options, provider, decodedCodes, preprocessed, services);
   }
 
   const localProvider: ResolvedOcrProvider = {
@@ -35,7 +50,7 @@ export async function recognizePriceTag(
     runtime: 'local-api',
     engine: 'pp-ocrv5',
   };
-  const localResult = await runServiceRecognition(preprocessed.blob, options, localProvider, decodedCodes, preprocessed);
+  const localResult = await runServiceRecognition(preprocessed.blob, options, localProvider, decodedCodes, preprocessed, services);
   const shouldFallback = Boolean(options.apiEndpoint)
     && (
       localResult.confidence < LOCAL_LOW_CONFIDENCE_THRESHOLD
@@ -51,7 +66,7 @@ export async function recognizePriceTag(
       runtime: 'paddle-api',
       engine: 'pp-ocrv5',
       normalizedProvider: 'fallback-api',
-    }, decodedCodes, preprocessed);
+    }, decodedCodes, preprocessed, services);
     return {
       ...apiResult,
       warnings: [
@@ -75,7 +90,8 @@ async function runServiceRecognition(
   options: OcrProviderOptions,
   provider: ResolvedOcrProvider,
   decodedCodes: OcrCodeResults = {},
-  fallbackImage?: { width: number; height: number }
+  fallbackImage?: { width: number; height: number },
+  services: OcrRecognitionServices = {}
 ): Promise<RecognizedPriceTag> {
   const endpoint = resolveRecognitionEndpoint(options, provider);
   if (!endpoint) {
@@ -87,15 +103,18 @@ async function runServiceRecognition(
   form.append('profile', JSON.stringify(buildProfilePayload(options.config)));
   form.append('options', JSON.stringify(buildOcrRequestOptions(provider)));
 
+  const timeoutMs = options.requestTimeoutMs
+    ?? (provider.runtime === 'local-api' ? LOCAL_REQUEST_TIMEOUT_MS : API_REQUEST_TIMEOUT_MS);
   const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     body: form,
-  }, provider.runtime === 'local-api' ? LOCAL_REQUEST_TIMEOUT_MS : API_REQUEST_TIMEOUT_MS);
+  }, timeoutMs, options.signal, services.fetch);
 
   if (!response.ok) {
+    const detail = await readErrorDetail(response);
     throw new Error(translate('ocr.apiRequestFailed', {
       status: response.status,
-      statusText: response.statusText,
+      statusText: detail ? `${response.statusText} - ${detail}` : response.statusText,
     }));
   }
 
@@ -167,22 +186,66 @@ export function buildOcrRequestOptions(provider: ResolvedOcrProvider): Record<st
   };
 }
 
-async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = API_REQUEST_TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = API_REQUEST_TIMEOUT_MS,
+  externalSignal?: AbortSignal,
+  fetchFn: FetchLike = fetch
+): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let abortReason: 'timeout' | 'external' | undefined;
+  const timeoutId = setTimeout(() => {
+    abortReason = 'timeout';
+    controller.abort();
+  }, timeoutMs);
+  const abortFromExternalSignal = () => {
+    abortReason = 'external';
+    controller.abort();
+  };
+
+  if (externalSignal?.aborted) {
+    clearTimeout(timeoutId);
+    throw new Error(translate('ocr.cancelled'));
+  }
+
+  externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true });
 
   try {
-    return await fetch(input, {
+    return await fetchFn(input, {
       ...init,
       signal: controller.signal,
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
+      if (abortReason === 'external' || externalSignal?.aborted) {
+        throw new Error(translate('ocr.cancelled'));
+      }
       throw new Error(translate('ocr.apiTimeout'));
     }
     throw err;
   } finally {
     clearTimeout(timeoutId);
+    externalSignal?.removeEventListener('abort', abortFromExternalSignal);
+  }
+}
+
+async function readErrorDetail(response: Response): Promise<string> {
+  try {
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      const body = await response.json();
+      const detail = typeof body?.detail === 'string'
+        ? body.detail
+        : typeof body?.message === 'string'
+          ? body.message
+          : '';
+      return detail.trim();
+    }
+    const text = await response.text();
+    return text.trim().slice(0, 400);
+  } catch {
+    return '';
   }
 }
 
