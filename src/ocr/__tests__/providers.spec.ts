@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildOcrRequestOptions, recognizePreparedPriceTag, resolveProviderMode, resolveRecognitionEndpoint } from '../providers';
+import { buildOcrRequestOptions, checkLocalOcrHealth, recognizePreparedPriceTag, resolveProviderMode, resolveRecognitionEndpoint } from '../providers';
 import type { OcrProviderMode, OcrProviderOptions } from '../types';
 import { ScreenType } from '@/screen/types';
 import { MARKET_PROFILES } from '@/i18n/market';
@@ -45,6 +45,31 @@ function okOcrResponse(items: unknown[]) {
     image: { width: 296, height: 128 },
     items,
     provider: 'test',
+  }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function okHealthResponse(ready: boolean) {
+  return new Response(JSON.stringify({
+    ready,
+    modelRoot: '/repo/runtime/ocr-models',
+    selectedEngine: 'pp-ocrv5',
+    engines: {
+      'pp-ocrv5': {
+        engine: 'pp-ocrv5',
+        label: 'paddleocr-text-recognition',
+        ready,
+        checks: [],
+      },
+      'paddleocr-vl': {
+        engine: 'paddleocr-vl',
+        label: 'paddleocr-doc-parsing',
+        ready: false,
+        checks: [],
+      },
+    },
   }), {
     status: 200,
     headers: { 'content-type': 'application/json' },
@@ -111,6 +136,35 @@ describe('OCR provider mapping', () => {
 });
 
 describe('OCR provider runtime branches', () => {
+  it('checks the local OCR model health endpoint for the selected engine', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okHealthResponse(false));
+
+    const health = await checkLocalOcrHealth('local-v5', { fetch: fetchMock });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/ocr/health?engine=pp-ocrv5');
+    expect(health.selectedEngine).toBe('pp-ocrv5');
+    expect(health.ready).toBe(false);
+  });
+
+  it('maps VL provider modes to the local doc-parsing health check', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okHealthResponse(false));
+
+    await checkLocalOcrHealth('paddle-api-vl', { fetch: fetchMock });
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/ocr/health?engine=paddleocr-vl');
+  });
+
+  it('explains local OCR health proxy failures as setup problems', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response('Bad Gateway', {
+      status: 502,
+      statusText: 'Bad Gateway',
+      headers: { 'content-type': 'text/plain' },
+    }));
+
+    await expect(checkLocalOcrHealth('local-v5', { fetch: fetchMock })).rejects.toThrow(/ocr:local|8000|OCR 服务/i);
+  });
+
   it('surfaces local model loading failures with the service detail', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
       detail: 'PP-OCRv5 model files are missing at runtime/ocr-models/pp-ocrv5/det',

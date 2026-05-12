@@ -2,14 +2,16 @@ import { decodeCodesFromImage } from './codeDecoder';
 import { extractPriceTagFromOcr } from './fieldExtraction';
 import { preprocessImageForOcr } from './imagePreprocess';
 import { normalizeOcrResponse } from './normalize';
-import type { OcrCodeResults, OcrEngine, OcrProviderMode, OcrProviderOptions, OcrProviderRawResult, PreprocessedOcrImage, RecognizedPriceTag } from './types';
+import type { LocalOcrHealthResponse, OcrCodeResults, OcrEngine, OcrProviderMode, OcrProviderOptions, OcrProviderRawResult, PreprocessedOcrImage, RecognizedPriceTag } from './types';
 import { translate } from '@/i18n';
 
 const LOCAL_LOW_CONFIDENCE_THRESHOLD = 0.58;
 const MIN_RELIABLE_ITEM_COUNT = 2;
 const LOCAL_REQUEST_TIMEOUT_MS = 180_000;
 const API_REQUEST_TIMEOUT_MS = 90_000;
+const LOCAL_HEALTH_TIMEOUT_MS = 6_000;
 const LOCAL_OCR_ENDPOINT = '/ocr/price-tag';
+const LOCAL_OCR_HEALTH_ENDPOINT = '/ocr/health';
 
 type FetchLike = typeof fetch;
 
@@ -31,6 +33,43 @@ export async function recognizePriceTag(
   const preprocessed = await preprocessImageForOcr(file);
   const decodedCodes = await decodeCodesFromImage(preprocessed.blob).catch(() => ({}));
   return recognizePreparedPriceTag(preprocessed, decodedCodes, options);
+}
+
+export async function checkLocalOcrHealth(
+  mode: OcrProviderMode,
+  options: {
+    signal?: AbortSignal;
+    requestTimeoutMs?: number;
+    fetch?: FetchLike;
+  } = {}
+): Promise<LocalOcrHealthResponse> {
+  const engine = resolveProviderMode(mode).engine;
+  const endpoint = `${LOCAL_OCR_HEALTH_ENDPOINT}?engine=${encodeURIComponent(engine)}`;
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(endpoint, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    }, options.requestTimeoutMs ?? LOCAL_HEALTH_TIMEOUT_MS, options.signal, options.fetch);
+  } catch (err) {
+    if (isNetworkConnectionFailure(err)) {
+      throw new Error(translate('ocr.localServiceUnavailable'));
+    }
+    throw err;
+  }
+
+  if (!response.ok) {
+    const detail = await readErrorDetail(response);
+    if (response.status === 502) {
+      throw new Error(translate('ocr.localServiceUnavailable'));
+    }
+    throw new Error(translate('ocr.apiRequestFailed', {
+      status: response.status,
+      statusText: detail ? `${response.statusText} - ${detail}` : response.statusText,
+    }));
+  }
+
+  return await response.json() as LocalOcrHealthResponse;
 }
 
 export async function recognizePreparedPriceTag(

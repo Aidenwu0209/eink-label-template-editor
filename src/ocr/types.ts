@@ -98,6 +98,31 @@ export interface OcrProviderOptions {
   requestTimeoutMs?: number;
 }
 
+export type LocalOcrModelStatus = 'ready' | 'missing' | 'lfs-pointer';
+
+export interface LocalOcrModelDirectoryStatus {
+  label: string;
+  path: string;
+  ready: boolean;
+  status: LocalOcrModelStatus;
+  fileCount: number;
+  message: string;
+}
+
+export interface LocalOcrEngineHealth {
+  engine: OcrEngine;
+  label: string;
+  ready: boolean;
+  checks: LocalOcrModelDirectoryStatus[];
+}
+
+export interface LocalOcrHealthResponse {
+  ready: boolean;
+  modelRoot: string;
+  selectedEngine?: OcrEngine;
+  engines: Record<OcrEngine, LocalOcrEngineHealth>;
+}
+
 export interface OcrProviderRawResult {
   image?: {
     width: number;

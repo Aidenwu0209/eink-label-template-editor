@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import tempfile
@@ -20,6 +21,15 @@ PADDLEOCR_VL_DIR = MODEL_ROOT / "paddleocr-vl"
 PADDLEOCR_VL_REC_DIR = PADDLEOCR_VL_DIR / "vl-rec"
 PADDLEOCR_VL_LAYOUT_DIR = PADDLEOCR_VL_DIR / "layout"
 
+PP_OCRV5_MODEL_CHECKS = (
+    ("PP-OCRv5 detection", PP_OCRV5_DET_DIR, ("*.pdmodel", "*.json", "*.onnx", "*.yml", "*.yaml")),
+    ("PP-OCRv5 recognition", PP_OCRV5_REC_DIR, ("*.pdmodel", "*.json", "*.onnx", "*.yml", "*.yaml")),
+)
+PADDLEOCR_VL_MODEL_CHECKS = (
+    ("PaddleOCR-VL recognition", PADDLEOCR_VL_REC_DIR, ("*.safetensors", "*.pdparams", "*.json", "*.yml", "*.yaml")),
+    ("PaddleOCR-VL layout detection", PADDLEOCR_VL_LAYOUT_DIR, ("*.pdmodel", "*.pdiparams", "*.safetensors", "*.json", "*.yml", "*.yaml")),
+)
+
 app = FastAPI(title="Eink Label OCR Service")
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +40,32 @@ app.add_middleware(
 
 _pp_ocrv5: Any | None = None
 _paddleocr_vl: Any | None = None
+
+
+@app.get("/ocr/health")
+async def ocr_health(engine: str | None = None) -> dict[str, Any]:
+    engines = {
+        "pp-ocrv5": build_engine_health(
+            "pp-ocrv5",
+            "paddleocr-text-recognition",
+            PP_OCRV5_MODEL_CHECKS,
+        ),
+        "paddleocr-vl": build_engine_health(
+            "paddleocr-vl",
+            "paddleocr-doc-parsing",
+            PADDLEOCR_VL_MODEL_CHECKS,
+        ),
+    }
+    if engine is not None and engine not in engines:
+        raise HTTPException(status_code=400, detail=f"Unsupported OCR engine: {engine}")
+
+    selected = engines.get(engine) if engine else None
+    return {
+        "ready": selected["ready"] if selected else all(item["ready"] for item in engines.values()),
+        "modelRoot": str(MODEL_ROOT),
+        "selectedEngine": engine,
+        "engines": engines,
+    }
 
 
 @app.post("/ocr/price-tag")
@@ -174,6 +210,75 @@ def ensure_model_dir(label: str, path: Path) -> None:
                 "Run `git lfs pull` or `npm run ocr:install-models`."
             ),
         )
+
+
+def build_engine_health(
+    engine: str,
+    label: str,
+    checks: tuple[tuple[str, Path, tuple[str, ...]], ...],
+) -> dict[str, Any]:
+    directory_checks = [
+        inspect_model_dir(check_label, path, required_any)
+        for check_label, path, required_any in checks
+    ]
+    return {
+        "engine": engine,
+        "label": label,
+        "ready": all(item["ready"] for item in directory_checks),
+        "checks": directory_checks,
+    }
+
+
+def inspect_model_dir(label: str, path: Path, required_any: tuple[str, ...]) -> dict[str, Any]:
+    if not path.exists():
+        return model_dir_result(label, path, False, "missing", 0, f"{label} model directory is missing.")
+
+    files = [file for file in path.rglob("*") if file.is_file() and file.name != ".gitkeep"]
+    required_files = [
+        file for file in files
+        if any(fnmatch.fnmatch(file.name, pattern) for pattern in required_any)
+    ]
+    if not required_files:
+        expected = ", ".join(required_any)
+        return model_dir_result(
+            label,
+            path,
+            False,
+            "missing",
+            len(files),
+            f"{label} model files are missing. Expected one of: {expected}.",
+        )
+
+    lfs_pointer = next((file for file in required_files if is_git_lfs_pointer(file)), None)
+    if lfs_pointer:
+        return model_dir_result(
+            label,
+            path,
+            False,
+            "lfs-pointer",
+            len(files),
+            f"{label} model file is still a Git LFS pointer: {lfs_pointer}.",
+        )
+
+    return model_dir_result(label, path, True, "ready", len(files), f"{label} model files are ready.")
+
+
+def model_dir_result(
+    label: str,
+    path: Path,
+    ready: bool,
+    status: str,
+    file_count: int,
+    message: str,
+) -> dict[str, Any]:
+    return {
+        "label": label,
+        "path": str(path),
+        "ready": ready,
+        "status": status,
+        "fileCount": file_count,
+        "message": message,
+    }
 
 
 def missing_model_error(label: str, path: Path) -> HTTPException:

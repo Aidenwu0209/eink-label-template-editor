@@ -2,8 +2,8 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { BootConfig } from '@/boot/types';
-import { recognizePriceTag } from '@/ocr/providers';
-import type { OcrLineItem, OcrLineRole, OcrProviderMode, RecognizedPriceTag } from '@/ocr/types';
+import { checkLocalOcrHealth, recognizePriceTag } from '@/ocr/providers';
+import type { LocalOcrEngineHealth, LocalOcrHealthResponse, OcrEngine, OcrLineItem, OcrLineRole, OcrProviderMode, RecognizedPriceTag } from '@/ocr/types';
 import type { SmartTemplateKind } from '@/ocr/templatePlanner';
 
 const OCR_API_STORAGE_KEY = 'eink-label-template-editor.ocrApi.v1';
@@ -71,8 +71,39 @@ const editableValues = ref<Record<string, string>>({});
 const editableLineItems = ref<OcrLineItem[]>([]);
 const activeLineId = ref<string | null>(null);
 const abortController = ref<AbortController | null>(null);
+const modelCheckController = ref<AbortController | null>(null);
+const isCheckingModels = ref(false);
+const modelHealth = ref<LocalOcrHealthResponse | null>(null);
+const modelHealthError = ref('');
 const usesApiEndpoint = computed(() => API_PROVIDER_MODES.has(providerMode.value));
 const canRetry = computed(() => Boolean(errorMessage.value && selectedFile.value && !isRecognizing.value));
+const selectedModelEngine = computed<OcrEngine>(() => engineForProviderMode(providerMode.value));
+const selectedModelHealth = computed<LocalOcrEngineHealth | null>(() => {
+  return modelHealth.value?.engines[selectedModelEngine.value] ?? null;
+});
+const modelCheckTone = computed(() => {
+  if (isCheckingModels.value) return 'checking';
+  if (modelHealthError.value) return 'error';
+  if (!selectedModelHealth.value) return 'idle';
+  return selectedModelHealth.value.ready ? 'ready' : 'missing';
+});
+const modelCheckSummary = computed(() => {
+  if (isCheckingModels.value) return t('ocr.modelCheckChecking');
+  if (modelHealthError.value) return t('ocr.modelCheckServiceDown');
+  const engineHealth = selectedModelHealth.value;
+  if (!engineHealth) return t('ocr.modelCheckNotRun');
+  return engineHealth.ready
+    ? t('ocr.modelCheckReady', { model: localModelLabel(selectedModelEngine.value) })
+    : t('ocr.modelCheckMissing', { model: localModelLabel(selectedModelEngine.value) });
+});
+const modelCheckHint = computed(() => {
+  if (modelHealthError.value) return modelHealthError.value;
+  const engineHealth = selectedModelHealth.value;
+  if (!engineHealth) return t('ocr.modelCheckHint');
+  if (engineHealth.ready) return t('ocr.modelCheckReadyHint', { root: modelHealth.value?.modelRoot ?? 'runtime/ocr-models' });
+  return t('ocr.modelCheckMissingHint');
+});
+const modelCheckDetails = computed(() => selectedModelHealth.value?.checks ?? []);
 const providerHint = computed(() => {
   if (providerMode.value === 'local-vl' || providerMode.value === 'browser-local-vl') return t('ocr.providerLocalVlHint');
   if (providerMode.value === 'paddle-api-vl') return t('ocr.providerApiVlHint');
@@ -115,12 +146,20 @@ watch(
     apiEndpoint.value = props.config.ocrApi
       ?? localStorage.getItem(OCR_API_STORAGE_KEY)
       ?? '';
+    void checkModelStatus(true);
   },
   { immediate: true }
 );
 
+watch(providerMode, () => {
+  modelHealth.value = null;
+  modelHealthError.value = '';
+  if (props.open) void checkModelStatus(true);
+});
+
 function closeDialog(): void {
   cancelOngoingRecognition();
+  cancelModelCheck();
   emit('close');
 }
 
@@ -210,6 +249,40 @@ function cancelOngoingRecognition(): void {
   abortController.value?.abort();
   abortController.value = null;
   isRecognizing.value = false;
+}
+
+async function checkModelStatus(silent = false): Promise<void> {
+  cancelModelCheck();
+  const controller = new AbortController();
+  modelCheckController.value = controller;
+  isCheckingModels.value = true;
+  modelHealthError.value = '';
+
+  try {
+    const result = await checkLocalOcrHealth(providerMode.value, {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted) return;
+    modelHealth.value = result;
+  } catch (err) {
+    if (controller.signal.aborted) return;
+    modelHealth.value = null;
+    modelHealthError.value = err instanceof Error ? err.message : String(err);
+    if (!silent) {
+      errorMessage.value = modelHealthError.value;
+    }
+  } finally {
+    if (modelCheckController.value === controller) {
+      modelCheckController.value = null;
+      isCheckingModels.value = false;
+    }
+  }
+}
+
+function cancelModelCheck(): void {
+  modelCheckController.value?.abort();
+  modelCheckController.value = null;
+  isCheckingModels.value = false;
 }
 
 function valuesFromRecognized(result: RecognizedPriceTag): Record<string, string> {
@@ -325,6 +398,18 @@ function providerLabel(provider: RecognizedPriceTag['provider']): string {
   if (provider === 'paddle-api-vl') return t('ocr.providerApiVl');
   if (provider === 'fallback-api') return t('ocr.providerFallbackApiV5');
   return provider;
+}
+
+function engineForProviderMode(mode: OcrProviderMode): OcrEngine {
+  return mode === 'local-vl' || mode === 'browser-local-vl' || mode === 'paddle-api-vl'
+    ? 'paddleocr-vl'
+    : 'pp-ocrv5';
+}
+
+function localModelLabel(engine: OcrEngine): string {
+  return engine === 'paddleocr-vl'
+    ? t('ocr.modelDocParsing')
+    : t('ocr.modelTextRecognition');
 }
 
 function isPriceLineRole(role: OcrLineRole): role is PriceLineRole {
@@ -527,6 +612,28 @@ function overlayBoxStyle(item: OcrLineItem) {
               </label>
             </div>
 
+            <div class="model-check" :class="`model-check-${modelCheckTone}`">
+              <div class="model-check-main">
+                <span class="model-check-title">{{ t('ocr.modelCheckTitle') }}</span>
+                <strong>{{ modelCheckSummary }}</strong>
+                <small>{{ modelCheckHint }}</small>
+              </div>
+              <button class="ghost-btn model-check-btn" type="button" :disabled="isCheckingModels" @click="checkModelStatus(false)">
+                {{ isCheckingModels ? t('ocr.modelCheckCheckingShort') : t('ocr.modelCheckAction') }}
+              </button>
+              <div v-if="modelCheckDetails.length" class="model-check-details">
+                <span
+                  v-for="item in modelCheckDetails"
+                  :key="item.path"
+                  class="model-check-pill"
+                  :class="{ ready: item.ready, missing: !item.ready }"
+                  :title="`${item.path} · ${item.message}`"
+                >
+                  {{ item.label }} · {{ item.ready ? t('ocr.modelCheckDownloaded') : t('ocr.modelCheckNotDownloaded') }}
+                </span>
+              </div>
+            </div>
+
             <div class="run-row">
               <button class="primary-btn" type="button" :disabled="isRecognizing || !selectedFile" @click="runRecognition">
                 {{ isRecognizing ? t('ocr.recognizing') : canRetry ? t('common.retry') : t('ocr.start') }}
@@ -717,6 +824,7 @@ function overlayBoxStyle(item: OcrLineItem) {
 
 .upload-panel,
 .settings-grid,
+.model-check,
 .run-row,
 .field-table,
 .line-table,
@@ -882,6 +990,99 @@ function overlayBoxStyle(item: OcrLineItem) {
 
 .setting-field:first-child {
   grid-column: 1 / -1;
+}
+
+.model-check {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 12px;
+  padding: 10px 12px;
+}
+
+.model-check-ready {
+  border-color: rgba(83, 210, 138, 0.36);
+  background: rgba(83, 210, 138, 0.08);
+}
+
+.model-check-missing,
+.model-check-error {
+  border-color: rgba(255, 134, 111, 0.38);
+  background: rgba(255, 134, 111, 0.08);
+}
+
+.model-check-checking {
+  border-color: rgba(216, 183, 96, 0.34);
+  background: rgba(216, 183, 96, 0.08);
+}
+
+.model-check-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.model-check-title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.model-check-main strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.model-check-main small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.model-check-btn {
+  align-self: center;
+}
+
+.model-check-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.model-check-details {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.model-check-pill {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 7px;
+  overflow: hidden;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--line-faint);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-check-pill.ready {
+  color: #c8f8d6;
+  border-color: rgba(83, 210, 138, 0.36);
+}
+
+.model-check-pill.missing {
+  color: #ffd2ca;
+  border-color: rgba(255, 134, 111, 0.38);
 }
 
 .run-row {
