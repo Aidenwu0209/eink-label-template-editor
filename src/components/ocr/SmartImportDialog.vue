@@ -83,7 +83,7 @@ const usesApiEndpoint = computed(() => API_PROVIDER_MODES.has(providerMode.value
 const canRetry = computed(() => Boolean(errorMessage.value && selectedFile.value && !isRecognizing.value));
 const selectedModelEngine = computed<OcrEngine>(() => engineForProviderMode(providerMode.value));
 const isInstallingModels = computed(() => modelInstallStatus.value?.running === true);
-const canInstallModels = computed(() => !modelHealthError.value && !isCheckingModels.value && !isInstallingModels.value);
+const canInstallModels = computed(() => !isCheckingModels.value && !isInstallingModels.value);
 const selectedModelHealth = computed<LocalOcrEngineHealth | null>(() => {
   return modelHealth.value?.engines[selectedModelEngine.value] ?? null;
 });
@@ -723,7 +723,7 @@ function overlayBoxStyle(item: OcrLineItem) {
                   class="primary-btn model-check-btn"
                   type="button"
                   :disabled="!canInstallModels"
-                  :title="modelHealthError ? t('ocr.modelInstallNeedService') : t('ocr.modelInstallTitle')"
+                  :title="t('ocr.modelInstallTitle')"
                   @click="installSelectedModel"
                 >
                   {{ isInstallingModels ? t('ocr.modelInstallRunningShort') : t('ocr.modelInstallAction') }}

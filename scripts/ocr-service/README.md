@@ -42,7 +42,8 @@ Run:
 npm run ocr:local
 ```
 
-The Vite dev server proxies `/ocr/price-tag` to `http://localhost:8000`, so the UI can use the default local endpoint.
+The Vite dev server proxies `/ocr/price-tag` and `/ocr/health` to `http://localhost:8000`, so the UI can use the default local endpoint.
+It handles `/ocr/install-models` directly during development, which lets the Smart Import dialog install local model files before the OCR service is running.
 
 The Smart Import dialog also calls:
 

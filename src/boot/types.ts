@@ -72,12 +72,19 @@ export interface EditorInitPayload {
 
 /** Raw URL parameters */
 export interface UrlParams {
+  mode?: string;
   width?: string;
   height?: string;
+  colorMode?: string;
   screenType?: string;
   templateId?: string;
+  templateName?: string;
   apiBase?: string;
+  saveApi?: string;
+  saveExportMode?: string;
   ocrApi?: string;
+  locale?: string;
+  market?: string;
   screenConfigId?: string;
 }
 
@@ -175,6 +182,7 @@ export interface TemplateResponse {
   name: string;
   meta: {
     screenType?: string;
+    colorMode?: string;
     width?: number;
     height?: number;
   };

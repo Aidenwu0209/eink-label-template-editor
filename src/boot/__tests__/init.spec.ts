@@ -292,6 +292,62 @@ describe('US-001: 外部初始化数据契约', () => {
     });
   });
 
+  describe('URL 参数初始化兼容后端跳转', () => {
+    it('使用普通 URL 参数初始化模板尺寸、色彩模式、名称和保存地址', () => {
+      const config = resolver.resolve({
+        urlParams: {
+          templateId: '12',
+          templateName: '门店黑白红模板',
+          width: '296',
+          height: '128',
+          colorMode: 'BWR',
+          apiBase: 'http://127.0.0.1:8080/api',
+          saveApi: 'http://127.0.0.1:8080/api/template/save',
+          saveExportMode: 'fabric-json',
+          locale: 'zh-CN',
+          market: 'CN',
+        },
+      });
+
+      expect(config.mode).toBe('edit');
+      expect(config.canvas.width).toBe(296);
+      expect(config.canvas.height).toBe(128);
+      expect(config.screen.type).toBe('tri');
+      expect(config.template?.id).toBe('12');
+      expect(config.templateName).toBe('门店黑白红模板');
+      expect(config.api.baseUrl).toBe('http://127.0.0.1:8080/api');
+      expect(config.saveApi).toBe('http://127.0.0.1:8080/api/template/save');
+      expect(config.saveExportMode).toBe('fabric-json');
+      expect(config.locale).toBe('zh-CN');
+      expect(config.market).toBe('CN');
+    });
+
+    it('优先使用后端返回的模板 JSON，并保留 URL 中的保存地址', () => {
+      const config = resolver.resolve({
+        urlParams: {
+          templateId: '8',
+          width: '250',
+          height: '122',
+          colorMode: 'BW',
+          saveApi: '/api/template/save',
+        },
+        remoteTemplate: {
+          id: '8',
+          name: '远端模板',
+          meta: { colorMode: 'BWRY', width: 400, height: 300 },
+          fabricJson: { version: '5.0', objects: [{ type: 'rect', left: 0, top: 0, width: 10, height: 10 }] },
+        },
+      });
+
+      expect(config.template?.data.objects).toHaveLength(1);
+      expect(config.templateName).toBe('远端模板');
+      expect(config.canvas.width).toBe(250);
+      expect(config.canvas.height).toBe(122);
+      expect(config.screen.type).toBe('bw');
+      expect(config.saveApi).toBe('/api/template/save');
+    });
+  });
+
   // ═══ colorMode 映射验证 ═══
 
   describe('colorMode 到 ScreenType 的映射', () => {

@@ -8,19 +8,40 @@ import type {
   RemoteScreenConfig,
   EditorInitPayload,
   EditorMode,
+  ProfileConfig,
+  SaveExportMode,
 } from './types';
 import { BootConfigError } from './types';
 import { resolvePreviewData, resolveRegionalPreferences, translate } from '@/i18n';
 
 /** Maps external colorMode to internal ScreenType */
-function colorModeToScreenType(colorMode: string): ScreenType {
+function tryColorModeToScreenType(colorMode: string): ScreenType | null {
+  const normalized = colorMode.trim().toUpperCase();
   const map: Record<string, ScreenType> = {
     BW: ScreenType.BW,
+    BLACK_WHITE: ScreenType.BW,
     BWR: ScreenType.TRI,
+    TRI: ScreenType.TRI,
+    TRICOLOR: ScreenType.TRI,
     BWRY: ScreenType.BWRY,
     E6: ScreenType.SIX,
+    SIX: ScreenType.SIX,
   };
-  return map[colorMode] ?? ScreenType.BW;
+  return map[normalized] ?? null;
+}
+
+function colorModeToScreenType(colorMode: string): ScreenType {
+  return tryColorModeToScreenType(colorMode) ?? ScreenType.BW;
+}
+
+function screenTypeToColorMode(screenType: ScreenType): ProfileConfig['colorMode'] {
+  const map: Record<ScreenType, ProfileConfig['colorMode']> = {
+    [ScreenType.BW]: 'BW',
+    [ScreenType.TRI]: 'BWR',
+    [ScreenType.BWRY]: 'BWRY',
+    [ScreenType.SIX]: 'E6',
+  };
+  return map[screenType];
 }
 
 /**
@@ -87,13 +108,18 @@ export class ConfigResolver {
     const { urlParams, remoteTemplate, remoteScreenConfig } = input;
 
     const screenType = this.resolveScreenType(
+      urlParams.colorMode,
       urlParams.screenType,
+      remoteTemplate?.meta.colorMode,
       remoteTemplate?.meta.screenType,
       remoteScreenConfig?.type
     );
 
     const profile = this.resolveProfile(screenType, remoteScreenConfig);
-    const regional = resolveRegionalPreferences();
+    const regional = resolveRegionalPreferences({
+      locale: urlParams.locale,
+      market: urlParams.market,
+    });
 
     const width = this.resolveNumber(
       urlParams.width,
@@ -108,8 +134,11 @@ export class ConfigResolver {
 
     this.validateDimensions(width, height, profile);
 
-    // Infer mode from templateId presence
-    const mode: EditorMode = remoteTemplate ? 'edit' : 'create';
+    const mode: EditorMode = urlParams.mode === 'create'
+      ? 'create'
+      : urlParams.templateId || remoteTemplate
+        ? 'edit'
+        : 'create';
 
     return {
       mode,
@@ -121,12 +150,25 @@ export class ConfigResolver {
       },
       template: remoteTemplate
         ? { id: remoteTemplate.id, data: remoteTemplate.fabricJson }
+        : urlParams.templateId
+          ? { id: urlParams.templateId, data: { objects: [] } }
         : undefined,
+      templateName: urlParams.templateName ?? remoteTemplate?.name,
+      sourceProfile: {
+        profileId: urlParams.screenConfigId,
+        name: profile.displayName,
+        width,
+        height,
+        colorMode: screenTypeToColorMode(screenType),
+        palette: profile.palette.map((color) => ({ name: color.name, value: color.hex })),
+      },
       previewData: resolvePreviewData(undefined, regional.market),
       ...regional,
       api: {
         baseUrl: urlParams.apiBase || '/api',
       },
+      saveApi: urlParams.saveApi,
+      saveExportMode: this.resolveSaveExportMode(urlParams.saveExportMode),
       ocrApi: urlParams.ocrApi,
     };
   }
@@ -224,8 +266,16 @@ export class ConfigResolver {
       if (c && Object.values(ScreenType).includes(c as ScreenType)) {
         return c as ScreenType;
       }
+      if (c) {
+        const screenType = tryColorModeToScreenType(c);
+        if (screenType) return screenType;
+      }
     }
     return ScreenType.BW;
+  }
+
+  private resolveSaveExportMode(value: string | undefined): SaveExportMode | undefined {
+    return value === 'fabric-json' || value === 'static-dynamic' ? value : undefined;
   }
 
   private resolveProfile(
