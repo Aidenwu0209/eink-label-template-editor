@@ -4,6 +4,7 @@
  */
 import type { BootConfig, FabricJSON, FabricObjectJSON, PreviewData, SaveExportMode } from '@/boot/types';
 import { SYSTEM_FIELDS } from '@/fields/constants';
+import { EXPORT_FONT_FAMILY, resolveExportFontFamily } from '@/fonts';
 import { translate, type PriceFormatProfile } from '@/i18n';
 
 // ══════════ Save Payload Types ══════════
@@ -22,6 +23,7 @@ export interface Widget {
   y: number;
   width: number;
   height: number;
+  fontFamily?: string;
   [key: string]: unknown;
 }
 
@@ -145,6 +147,7 @@ function extractWidget(
         ...widgetGeometry(obj),
         fontSize: (obj as any).fontSize ?? 16,
         fontWeight: (obj as any).fontWeight ?? 'normal',
+        fontFamily: resolveExportFontFamily((obj as any).fontFamily),
         color: (obj as any).fill ?? '#000000',
         overflow: ext.overflow ?? 'ellipsis',
         defaultValue: String(previewData?.[ext.fieldBinding] ?? ''),
@@ -162,6 +165,7 @@ function extractWidget(
         decimalPlaces: ext?.decimalPlaces ?? priceFormat?.decimalPlaces ?? 2,
         thousandSeparator: ext?.thousandSeparator ?? priceFormat?.thousandSeparator ?? ',',
         decimalSeparator: ext?.decimalSeparator ?? priceFormat?.decimalSeparator ?? '.',
+        fontFamily: resolveExportFontFamily(ext?.fontFamily),
         defaultValue: previewData?.[fieldId] != null ? String(previewData[fieldId]) : '',
       } satisfies PriceWidget;
     }
@@ -172,6 +176,7 @@ function extractWidget(
         fieldId: 'discount',
         ...widgetGeometry(obj),
         format: ext?.formatTemplate ?? discountFormatTemplate ?? '{value}',
+        fontFamily: resolveExportFontFamily(ext?.fontFamily),
         defaultValue: previewData?.discount != null ? String(previewData.discount) : '',
       };
     }
@@ -292,7 +297,7 @@ export function buildSavePayload(
       data: canvasDataURL,
     },
     dynamicMetadata: {
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily: EXPORT_FONT_FAMILY,
       reservedFields: [...SYSTEM_FIELDS],
       widgets,
     },

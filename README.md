@@ -13,6 +13,7 @@ Eink Label Template Editor is a lightweight visual editor for ESL and e-ink pric
 - Bind template widgets to product data such as `productName`, `price`, `imageUrl`, `qrContent`, and `barcodeContent`.
 - Preview the final result using the target e-ink color palette.
 - Save a complete payload containing editable JSON, static PNG Base64, and dynamic metadata.
+- Use the embedded `Noto Sans SC Variable` font for consistent editor rendering and export metadata; see [Third-Party Notices](./THIRD_PARTY_NOTICES.md).
 
 ## Quick Start
 
@@ -177,7 +178,7 @@ When the user clicks Save, the editor generates:
       "data": "data:image/png;base64,..."
     },
     "dynamicMetadata": {
-      "fontFamily": "AlibabaPuHuiTi",
+      "fontFamily": "Noto Sans SC Variable",
       "reservedFields": [
         "productName",
         "price",

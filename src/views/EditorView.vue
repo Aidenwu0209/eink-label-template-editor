@@ -9,6 +9,7 @@ import EditorToolbar from '@/components/toolbar/EditorToolbar.vue';
 import PropertiesPanel from '@/components/panel/PropertiesPanel.vue';
 import SmartImportDialog from '@/components/ocr/SmartImportDialog.vue';
 import { getValidCustomFieldIdsFromPreviewData, validateCustomFieldId } from '@/fields';
+import { ensureEditorFontsLoaded } from '@/fonts';
 import type { FabricJSON, SaveExportMode } from '@/boot/types';
 import type { RecognizedPriceTag } from '@/ocr/types';
 import type { SmartTemplateKind } from '@/ocr/templatePlanner';
@@ -892,6 +893,7 @@ onMounted(async () => {
     return;
   }
 
+  await ensureEditorFontsLoaded();
   editorStore.initEditor(canvasEl, config);
 
   if (config.template) {

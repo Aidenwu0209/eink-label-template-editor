@@ -225,7 +225,7 @@
   - AC1: TEXT 创建验证
   - AC2: 固定文本（无字段绑定）验证
   - AC3a-c: 字段绑定（productName、description、自定义字段）验证
-  - AC4: fontFamily 为 AlibabaPuHuiTi
+  - AC4: fontFamily 为内嵌 Noto Sans SC Variable
   - AC5: fontWeight 只接受 normal/bold
   - AC6: overflow 支持 clip/ellipsis/wrap
   - AC7: 默认 overflow 为 ellipsis

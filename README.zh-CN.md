@@ -13,6 +13,7 @@
 - 将模板组件绑定到商品字段，例如 `productName`、`price`、`imageUrl`、`qrContent`、`barcodeContent`。
 - 按目标电子墨水屏色板预览最终显示效果。
 - 保存完整模板结果，包括可再次编辑的 JSON、静态 PNG Base64 和动态组件元数据。
+- 默认使用内嵌 `Noto Sans SC Variable` 字体，保证编辑渲染与导出元数据一致；合规信息见 [第三方声明](./THIRD_PARTY_NOTICES.md)。
 
 ## 快速开始
 
@@ -177,7 +178,7 @@ NODE
       "data": "data:image/png;base64,..."
     },
     "dynamicMetadata": {
-      "fontFamily": "AlibabaPuHuiTi",
+      "fontFamily": "Noto Sans SC Variable",
       "reservedFields": [
         "productName",
         "price",

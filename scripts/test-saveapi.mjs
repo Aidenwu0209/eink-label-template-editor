@@ -38,6 +38,7 @@ const SYSTEM_FIELDS = [
   'productName', 'price', 'discount', 'description',
   'imageUrl', 'qrContent', 'barcodeContent',
 ];
+const EXPORT_FONT_FAMILY = 'Noto Sans SC Variable';
 
 const SCREEN_TYPE_TO_COLOR_MODE = {
   bw: 'BW',
@@ -79,7 +80,7 @@ function buildSavePayload(config, fabricJson, canvasDataURL) {
     staticDynamic: {
       staticImage: { type: 'base64', format: 'png', data: canvasDataURL },
       dynamicMetadata: {
-        fontFamily: 'AlibabaPuHuiTi',
+        fontFamily: EXPORT_FONT_FAMILY,
         reservedFields: [...SYSTEM_FIELDS],
         widgets,
       },

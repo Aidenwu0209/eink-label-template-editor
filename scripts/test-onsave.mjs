@@ -23,6 +23,7 @@ const SYSTEM_FIELDS = [
   'productName', 'price', 'discount', 'description',
   'imageUrl', 'qrContent', 'barcodeContent',
 ];
+const EXPORT_FONT_FAMILY = 'Noto Sans SC Variable';
 
 const SCREEN_TYPE_TO_COLOR_MODE = {
   bw: 'BW',
@@ -64,7 +65,7 @@ function buildSavePayload(config, fabricJson, canvasDataURL) {
     staticDynamic: {
       staticImage: { type: 'base64', format: 'png', data: canvasDataURL },
       dynamicMetadata: {
-        fontFamily: 'AlibabaPuHuiTi',
+        fontFamily: EXPORT_FONT_FAMILY,
         reservedFields: [...SYSTEM_FIELDS],
         widgets,
       },
@@ -213,7 +214,7 @@ describe('US-014: onSave 优先保存方式', () => {
     assert.equal(received.staticDynamic.staticImage.type, 'base64');
     assert.equal(received.staticDynamic.staticImage.format, 'png');
     assert.equal(typeof received.staticDynamic.staticImage.data, 'string');
-    assert.equal(received.staticDynamic.dynamicMetadata.fontFamily, 'AlibabaPuHuiTi');
+    assert.equal(received.staticDynamic.dynamicMetadata.fontFamily, EXPORT_FONT_FAMILY);
     assert.ok(Array.isArray(received.staticDynamic.dynamicMetadata.reservedFields));
     assert.ok(Array.isArray(received.staticDynamic.dynamicMetadata.widgets));
 

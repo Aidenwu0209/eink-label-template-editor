@@ -13,6 +13,7 @@ import type { BootConfig } from '@/boot/types';
 import type { BarcodeExtension, DiscountExtension, PriceExtension, QrcodeExtension } from '@/stores/editorStore';
 import type * as fabric from 'fabric';
 import { MARKET_PROFILES } from '@/i18n/market';
+import { DEFAULT_EDITOR_FONT_FAMILY } from '@/fonts';
 
 const qrcodeExt: QrcodeExtension = {
   source: 'dynamic',
@@ -77,7 +78,7 @@ describe('component readability warnings', () => {
   it('formats CN and EU prices using the active market separators', () => {
     const base: Omit<PriceExtension, 'currencySymbol' | 'showCurrency' | 'decimalPlaces' | 'thousandSeparator' | 'decimalSeparator'> = {
       fieldBinding: 'price',
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
       currencyStyle: { fontSize: 40, fontWeight: 'bold', color: '#000000' },
       integerStyle: { fontSize: 80, fontWeight: 'bold', color: '#000000' },
       decimalStyle: { fontSize: 48, fontWeight: 'bold', color: '#000000', offsetY: -20 },
@@ -128,7 +129,7 @@ describe('component readability warnings', () => {
   it('keeps authored price and discount font sizes even when rendered content is fitted', () => {
     const priceExt: PriceExtension = {
       fieldBinding: 'price',
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
       currencySymbol: '¥',
       showCurrency: true,
       decimalPlaces: 2,
@@ -147,7 +148,7 @@ describe('component readability warnings', () => {
       formatTemplate: '{value}折',
       backgroundColor: '#FFFFFF',
       textColor: '#000000',
-      fontFamily: 'AlibabaPuHuiTi',
+      fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
       fontSize: 42,
       fontWeight: 'bold',
       textAlign: 'center',

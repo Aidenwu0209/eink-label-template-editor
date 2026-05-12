@@ -282,7 +282,7 @@ TEXT 组件建议结构：
   "y": 10,
   "width": 180,
   "height": 36,
-  "fontFamily": "AlibabaPuHuiTi",
+  "fontFamily": "Noto Sans SC Variable",
   "fontSize": 16,
   "fontWeight": "normal",
   "color": "#000000",
@@ -306,7 +306,7 @@ TEXT 组件建议结构：
 建议内部统一标识为：
 
 ```plain
-AlibabaPuHuiTi
+Noto Sans SC Variable
 ```
 
 规则：
@@ -429,20 +429,20 @@ PRICE 组件建议结构：
   },
   "style": {
     "currency": {
-      "fontFamily": "AlibabaPuHuiTi",
+      "fontFamily": "Noto Sans SC Variable",
       "fontSize": 18,
       "fontWeight": "bold",
       "color": "#000000",
       "offsetY": 0
     },
     "integer": {
-      "fontFamily": "AlibabaPuHuiTi",
+      "fontFamily": "Noto Sans SC Variable",
       "fontSize": 48,
       "fontWeight": "bold",
       "color": "#000000"
     },
     "decimal": {
-      "fontFamily": "AlibabaPuHuiTi",
+      "fontFamily": "Noto Sans SC Variable",
       "fontSize": 22,
       "fontWeight": "bold",
       "color": "#000000",
@@ -484,7 +484,7 @@ PRICE 组件建议结构：
   "shape": "rect",
   "backgroundColor": "#FF0000",
   "textColor": "#FFFFFF",
-  "fontFamily": "AlibabaPuHuiTi",
+  "fontFamily": "Noto Sans SC Variable",
   "fontSize": 14,
   "fontWeight": "bold",
   "align": "center",
@@ -659,7 +659,7 @@ base64
       "data": "data:image/png;base64,..."
     },
     "dynamicMetadata": {
-      "fontFamily": "AlibabaPuHuiTi",
+      "fontFamily": "Noto Sans SC Variable",
       "reservedFields": [
         "productName",
         "price",
@@ -812,4 +812,3 @@ base64
 >
 
 下一步建议把这份冻结需求拆成 **Epic / Feature / User Story / 验收标准**，这样就可以进入 OpenSpec 或研发任务拆解阶段。
-

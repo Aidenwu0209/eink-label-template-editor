@@ -98,7 +98,7 @@
 - [ ] 用户可以添加 TEXT 组件。
 - [ ] TEXT 可以设置为固定文本，不绑定字段。
 - [ ] TEXT 可以绑定 `productName`、`description` 或自定义文本字段。
-- [ ] TEXT 默认字体为 `AlibabaPuHuiTi`。
+- [ ] TEXT 默认字体为内嵌 `Noto Sans SC Variable`。
 - [ ] TEXT 字重只支持 `normal` 和 `bold`。
 - [ ] TEXT 支持 `clip`、`ellipsis`、`wrap` 三种超长模式。
 - [ ] TEXT 默认超长模式为 `ellipsis`。
@@ -219,7 +219,7 @@
 - [ ] `staticDynamic.staticImage.format` 为 `png`。
 - [ ] `staticDynamic.staticImage.data` 以 `data:image/png;base64,` 开头。
 - [ ] 点击保存后生成 `staticDynamic.dynamicMetadata`。
-- [ ] `dynamicMetadata.fontFamily` 为 `AlibabaPuHuiTi`。
+- [ ] `dynamicMetadata.fontFamily` 为 `Noto Sans SC Variable`。
 - [ ] `dynamicMetadata.reservedFields` 包含所有系统固有字段。
 - [ ] `dynamicMetadata.widgets` 包含所有动态组件。
 - [ ] 使用 Browser 在页面中添加 TEXT、PRICE、IMAGE、QRCODE 后点击保存，可以观察到 Payload 包含对应 widgets。
@@ -286,7 +286,7 @@
 - FR-14: BARCODE 第一版必须只支持 CODE128。
 - FR-15: 动态 IMAGE 必须固定绑定 `imageUrl`。
 - FR-16: TEXT 必须支持 `clip`、`ellipsis`、`wrap` 三种超长模式。
-- FR-17: 第一版字体必须统一为 `AlibabaPuHuiTi`。
+- FR-17: 第一版字体必须统一为内嵌 `Noto Sans SC Variable`。
 - FR-18: 保存时必须输出 Full JSON。
 - FR-19: 保存时必须输出 Static PNG Base64。
 - FR-20: 保存时必须输出 Dynamic Metadata。

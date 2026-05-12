@@ -11,7 +11,7 @@
  *   AC7:  staticImage.format === 'png'
  *   AC8:  staticImage.data starts with data:image/png;base64,
  *   AC9:  staticDynamic.dynamicMetadata
- *   AC10: dynamicMetadata.fontFamily === 'AlibabaPuHuiTi'
+ *   AC10: dynamicMetadata.fontFamily === embedded Noto Sans SC
  *   AC11: dynamicMetadata.reservedFields 包含全部系统字段
  *   AC12: dynamicMetadata.widgets 包含每个动态组件
  *   AC13: (浏览器验证 — 需手动)
@@ -27,6 +27,19 @@ const SYSTEM_FIELDS = [
   'productName', 'price', 'discount', 'description',
   'imageUrl', 'qrContent', 'barcodeContent',
 ];
+const EXPORT_FONT_FAMILY = 'Noto Sans SC Variable';
+const DEFAULT_EDITOR_FONT_FAMILY =
+  '"Noto Sans SC Variable", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif';
+const LEGACY_FONT_FAMILY = 'AlibabaPuHuiTi';
+
+function resolveEditorFontFamily(fontFamily) {
+  return !fontFamily || fontFamily === LEGACY_FONT_FAMILY ? DEFAULT_EDITOR_FONT_FAMILY : fontFamily;
+}
+
+function resolveExportFontFamily(fontFamily) {
+  const resolved = resolveEditorFontFamily(fontFamily);
+  return resolved.includes(EXPORT_FONT_FAMILY) ? EXPORT_FONT_FAMILY : resolved;
+}
 
 const SCREEN_TYPE_TO_COLOR_MODE = {
   bw: 'BW', tri: 'BWR', bwry: 'BWRY', six: 'E6',
@@ -56,6 +69,7 @@ function extractWidget(obj, previewData) {
         height: Math.round(obj.height ?? 0),
         fontSize: obj.fontSize ?? 16,
         fontWeight: obj.fontWeight ?? 'normal',
+        fontFamily: resolveExportFontFamily(obj.fontFamily),
         color: obj.fill ?? '#000000',
         overflow: ext.overflow ?? 'ellipsis',
         defaultValue: String(previewData?.[ext.fieldBinding] ?? ''),
@@ -76,6 +90,7 @@ function extractWidget(obj, previewData) {
         decimalPlaces: ext.decimalPlaces ?? marketPrice.decimalPlaces ?? 2,
         thousandSeparator: ext.thousandSeparator ?? marketPrice.thousandSeparator ?? ',',
         decimalSeparator: ext.decimalSeparator ?? marketPrice.decimalSeparator ?? '.',
+        fontFamily: resolveExportFontFamily(ext.fontFamily),
         defaultValue: previewData?.price != null ? String(previewData.price) : '',
       };
     }
@@ -89,6 +104,7 @@ function extractWidget(obj, previewData) {
         width: Math.round(obj.width ?? 0),
         height: Math.round(obj.height ?? 0),
         format: ext.formatTemplate ?? '{value}折',
+        fontFamily: resolveExportFontFamily(ext.fontFamily),
         defaultValue: previewData?.discount != null ? String(previewData.discount) : '',
       };
     }
@@ -175,7 +191,7 @@ function buildSavePayload(config, fabricJson, canvasDataURL) {
         data: canvasDataURL,
       },
       dynamicMetadata: {
-        fontFamily: 'AlibabaPuHuiTi',
+        fontFamily: EXPORT_FONT_FAMILY,
         reservedFields: [...SYSTEM_FIELDS],
         widgets,
       },
@@ -359,9 +375,13 @@ describe('US-013: 生成保存 Payload', () => {
       assert.ok(payload.staticDynamic.dynamicMetadata);
     });
 
-    it('AC10: fontFamily === AlibabaPuHuiTi', () => {
+    it('AC10: fontFamily === embedded Noto Sans SC', () => {
       const payload = buildSavePayload(makeConfig(), makeFabricJson([]), MOCK_DATA_URL);
-      assert.equal(payload.staticDynamic.dynamicMetadata.fontFamily, 'AlibabaPuHuiTi');
+      assert.equal(payload.staticDynamic.dynamicMetadata.fontFamily, EXPORT_FONT_FAMILY);
+    });
+
+    it('AC10b: legacy AlibabaPuHuiTi maps to embedded export font', () => {
+      assert.equal(resolveExportFontFamily('AlibabaPuHuiTi'), EXPORT_FONT_FAMILY);
     });
 
     it('AC11: reservedFields 包含全部 7 个系统字段', () => {
@@ -378,7 +398,7 @@ describe('US-013: 生成保存 Payload', () => {
         // Dynamic TEXT — should be in widgets
         {
           type: 'textbox', left: 10, top: 10, width: 180, height: 36,
-          fontSize: 16, fontWeight: 'normal', fill: '#000000',
+          fontSize: 16, fontWeight: 'normal', fontFamily: DEFAULT_EDITOR_FONT_FAMILY, fill: '#000000',
           extensionType: 'TEXT',
           extension: { fieldBinding: 'productName', overflow: 'ellipsis', lineClamp: 1 },
         },
@@ -393,13 +413,13 @@ describe('US-013: 生成保存 Payload', () => {
         {
           type: 'rect', left: 20, top: 50, width: 180, height: 60,
           extensionType: 'PRICE',
-          extension: { fieldBinding: 'price', currencySymbol: '¥' },
+          extension: { fieldBinding: 'price', currencySymbol: '¥', fontFamily: DEFAULT_EDITOR_FONT_FAMILY },
         },
         // DISCOUNT
         {
           type: 'rect', left: 10, top: 10, width: 64, height: 28,
           extensionType: 'DISCOUNT',
-          extension: { fieldBinding: 'discount', formatTemplate: '{value}折' },
+          extension: { fieldBinding: 'discount', formatTemplate: '{value}折', fontFamily: DEFAULT_EDITOR_FONT_FAMILY },
         },
         // Static IMAGE — should NOT be in widgets
         {
@@ -445,14 +465,17 @@ describe('US-013: 生成保存 Payload', () => {
       // Verify widget fieldIds
       const textWidget = widgets.find(w => w.type === 'TEXT');
       assert.equal(textWidget.fieldId, 'productName');
+      assert.equal(textWidget.fontFamily, EXPORT_FONT_FAMILY);
       assert.equal(textWidget.defaultValue, '示例商品');
 
       const priceWidget = widgets.find(w => w.type === 'PRICE');
       assert.equal(priceWidget.fieldId, 'price');
+      assert.equal(priceWidget.fontFamily, EXPORT_FONT_FAMILY);
       assert.equal(priceWidget.defaultValue, '9.9');
 
       const discountWidget = widgets.find(w => w.type === 'DISCOUNT');
       assert.equal(discountWidget.fieldId, 'discount');
+      assert.equal(discountWidget.fontFamily, EXPORT_FONT_FAMILY);
       assert.equal(discountWidget.defaultValue, '8.8');
       assert.equal(discountWidget.format, '{value}折');
 
@@ -488,6 +511,7 @@ describe('US-013: 生成保存 Payload', () => {
       assert.equal(w.y, 20);
       assert.equal(w.fontSize, 16);
       assert.equal(w.fontWeight, 'bold');
+      assert.equal(w.fontFamily, EXPORT_FONT_FAMILY);
       assert.equal(w.color, '#000000');
       assert.equal(w.overflow, 'wrap');
       assert.equal(w.defaultValue, '商品描述');

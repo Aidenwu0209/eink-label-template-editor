@@ -23,6 +23,7 @@ const SYSTEM_FIELDS = [
   'productName', 'price', 'discount', 'description',
   'imageUrl', 'qrContent', 'barcodeContent',
 ];
+const EXPORT_FONT_FAMILY = 'Noto Sans SC Variable';
 
 const BWR_PALETTE = [
   { name: 'white', hex: '#FFFFFF', rgb: [255, 255, 255], deviceIndex: 0 },
@@ -135,7 +136,7 @@ function buildSavePayload(config, fabricJson, canvasDataURL) {
     staticDynamic: {
       staticImage: { type: 'base64', format: 'png', data: canvasDataURL },
       dynamicMetadata: {
-        fontFamily: 'AlibabaPuHuiTi',
+        fontFamily: EXPORT_FONT_FAMILY,
         reservedFields: [...SYSTEM_FIELDS],
         widgets,
       },
@@ -213,7 +214,7 @@ function runE2EFlow() {
     // TEXT bound to productName
     {
       type: 'textbox', left: 15, top: 8, width: 180, height: 30,
-      fontSize: 14, fontWeight: 'bold', fill: '#000000', fontFamily: 'AlibabaPuHuiTi',
+      fontSize: 14, fontWeight: 'bold', fill: '#000000', fontFamily: EXPORT_FONT_FAMILY,
       textAlign: 'left',
       extensionType: 'TEXT',
       extension: { fieldBinding: 'productName', overflow: 'ellipsis', lineClamp: 1, verticalAlign: 'top' },
@@ -497,9 +498,9 @@ describe('US-016: 完成创建到保存的闭环验证', () => {
       assert.ok(payload.staticDynamic.dynamicMetadata);
     });
 
-    it('fontFamily === AlibabaPuHuiTi', () => {
+    it('fontFamily === embedded Noto Sans SC', () => {
       const { payload } = runE2EFlow();
-      assert.equal(payload.staticDynamic.dynamicMetadata.fontFamily, 'AlibabaPuHuiTi');
+      assert.equal(payload.staticDynamic.dynamicMetadata.fontFamily, EXPORT_FONT_FAMILY);
     });
 
     it('reservedFields 包含全部 7 个系统字段', () => {

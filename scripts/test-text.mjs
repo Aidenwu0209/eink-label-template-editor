@@ -26,6 +26,12 @@ const BWR_PALETTE = [
 const TEXT_BINDABLE_FIELDS = ['productName', 'description'];
 const SYSTEM_FIELDS = ['productName', 'price', 'discount', 'description', 'imageUrl', 'qrContent', 'barcodeContent'];
 const TEXT_OVERFLOW_MODES = ['clip', 'ellipsis', 'wrap'];
+const EMBEDDED_EDITOR_FONT_FAMILY = '"Noto Sans SC Variable", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif';
+const LEGACY_FONT_FAMILY = 'AlibabaPuHuiTi';
+
+function resolveEditorFontFamily(fontFamily) {
+  return !fontFamily || fontFamily === LEGACY_FONT_FAMILY ? EMBEDDED_EDITOR_FONT_FAMILY : fontFamily;
+}
 
 function makeConfig(width, height, palette, screenType) {
   return {
@@ -66,7 +72,7 @@ function createTextConfig(config, overrides = {}) {
     left,
     top,
     width: w,
-    fontFamily: 'AlibabaPuHuiTi',
+    fontFamily: EMBEDDED_EDITOR_FONT_FAMILY,
     fontSize: 16,
     fontWeight: 'normal',
     fill: '#000000',
@@ -144,11 +150,15 @@ describe('US-006: TEXT text component', () => {
     assert.equal(text.text, 'Apple');
   });
 
-  // AC4: TEXT uses AlibabaPuHuiTi as the font family
-  it('AC4: TEXT fontFamily is AlibabaPuHuiTi', () => {
+  // AC4: TEXT uses the embedded Noto Sans SC font family
+  it('AC4: TEXT fontFamily is embedded Noto Sans SC', () => {
     const config = makeConfig(296, 128, BW_PALETTE, ScreenType.BW);
     const text = createTextConfig(config);
-    assert.equal(text.fontFamily, 'AlibabaPuHuiTi');
+    assert.equal(text.fontFamily, EMBEDDED_EDITOR_FONT_FAMILY);
+  });
+
+  it('AC4b: legacy AlibabaPuHuiTi maps to embedded Noto Sans SC', () => {
+    assert.equal(resolveEditorFontFamily('AlibabaPuHuiTi'), EMBEDDED_EDITOR_FONT_FAMILY);
   });
 
   // AC5: TEXT font weight accepts only normal and bold

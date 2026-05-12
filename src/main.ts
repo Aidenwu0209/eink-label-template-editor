@@ -3,6 +3,7 @@ import { createPinia } from 'pinia';
 import { router } from './router';
 import App from './App.vue';
 import { i18n } from './i18n';
+import '@fontsource-variable/noto-sans-sc/index.css';
 import './style.css';
 
 const app = createApp(App);

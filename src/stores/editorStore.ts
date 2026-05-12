@@ -11,7 +11,13 @@ import { SCREEN_PROFILES } from '@/screen/profiles';
 import { findNearestColor, hexToRgb } from '@/renderer/colorUtils';
 import { buildSavePayload, type SavePayload } from '@/export/SavePayloadBuilder';
 import { PRICE_BINDABLE_FIELDS, validateCustomFieldId, type PriceBindableField } from '@/fields/constants';
-import { DEFAULT_EDITOR_FONT_FAMILY, resolveEditorFontFamily, resolveEditorFontWeight, type EditorFontWeight } from '@/fonts';
+import {
+  DEFAULT_EDITOR_FONT_FAMILY,
+  ensureEditorFontsLoaded,
+  resolveEditorFontFamily,
+  resolveEditorFontWeight,
+  type EditorFontWeight,
+} from '@/fonts';
 import type { RecognizedPriceTag } from '@/ocr/types';
 import {
   createPriceTagTemplatePlan,
@@ -2812,6 +2818,8 @@ function historySignature(state: HistoryState): string {
     isSaving.value = true;
     saveError.value = null;
     try {
+      await ensureEditorFontsLoaded();
+      core.fabricCanvas.renderAll();
       const fabricJson = await core.exportJSON();
 
       const canvasDataURL = await exportStaticImage(core);
